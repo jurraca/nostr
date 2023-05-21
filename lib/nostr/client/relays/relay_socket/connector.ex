@@ -1,4 +1,4 @@
-defmodule Nostr.Client.Relays.RelaySocket.Connector do
+defmodule Nostr.Relay.Socket.Connector do
   @moduledoc """
   Websocket connection initialization
 

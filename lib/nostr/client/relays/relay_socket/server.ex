@@ -1,21 +1,21 @@
-defmodule Nostr.Client.Relays.RelaySocket.Server do
+defmodule Nostr.Relay.Socket.Server do
   @moduledoc """
-  The process handling all of the RelaySocket commands
+  The process handling all of the Socket commands
   """
 
   use GenServer
 
   require Logger
 
-  alias Nostr.Client.Relays.RelaySocket
-  alias Nostr.Client.Relays.RelaySocket.{Connector, MessageDispatcher, Publisher, Sender}
+  alias Nostr.Relay.Socket
+  alias Nostr.Relay.Socket.{Connector, MessageDispatcher, Publisher, Sender}
   alias Nostr.Client.{SendRequest}
 
   @impl true
   def init(%{relay_url: relay_url, owner_pid: owner_pid}) do
     send(self(), {:connect_to_relay, relay_url, owner_pid})
 
-    {:ok, %RelaySocket{}}
+    {:ok, %Socket{}}
   end
 
   @impl true
@@ -48,17 +48,17 @@ defmodule Nostr.Client.Relays.RelaySocket.Server do
   end
 
   @impl true
-  def handle_call(:ready?, _from, %RelaySocket{websocket: nil} = state) do
+  def handle_call(:ready?, _from, %Socket{websocket: nil} = state) do
     {:reply, false, state}
   end
 
   @impl true
-  def handle_call(:ready?, _from, %RelaySocket{websocket: _} = state) do
+  def handle_call(:ready?, _from, %Socket{websocket: _} = state) do
     {:reply, true, state}
   end
 
   @impl true
-  def handle_call(:url, _from, %RelaySocket{conn: conn} = state) do
+  def handle_call(:url, _from, %Socket{conn: conn} = state) do
     url = ~s(#{conn.private.scheme}://#{conn.host}:#{conn.port})
 
     {:reply, url, state}
@@ -68,7 +68,7 @@ defmodule Nostr.Client.Relays.RelaySocket.Server do
   def handle_call(
         command,
         _from,
-        %RelaySocket{url: url, owner_pid: owner_pid, websocket: nil} = state
+        %Socket{url: url, owner_pid: owner_pid, websocket: nil} = state
       ) do
     command_name = elem(command, 0)
     reason = "Can't execute #{command_name} on #{url}, as websockets aren't enabled yet"
@@ -174,15 +174,15 @@ defmodule Nostr.Client.Relays.RelaySocket.Server do
   end
 
   @impl true
-  def handle_info({:connect_to_relay, relay_url, owner_pid}, relaysocket) do
+  def handle_info({:connect_to_relay, relay_url, owner_pid}, state) do
     case Connector.connect(relay_url) do
       {:ok, conn, ref} ->
         Publisher.successful_connection(owner_pid, relay_url)
 
         {
           :noreply,
-          %RelaySocket{
-            relaysocket
+          %Socket{
+            state
             | url: relay_url,
               conn: conn,
               request_ref: ref,
@@ -195,7 +195,7 @@ defmodule Nostr.Client.Relays.RelaySocket.Server do
 
         Publisher.unsuccessful_connection(owner_pid, relay_url, message)
 
-        {:stop, {:shutdown, "error in RelaySocket init: #{message}"}}
+        {:stop, {:shutdown, "error in Socket init: #{message}"}}
     end
   end
 

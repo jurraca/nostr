@@ -1,4 +1,4 @@
-defmodule Nostr.Client.Relays.RelaySocket.Sender do
+defmodule Nostr.Relay.Socket.Sender do
   @moduledoc """
   Responsible for sending frames through the websocket connection
   """

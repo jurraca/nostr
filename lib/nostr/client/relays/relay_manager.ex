@@ -1,11 +1,11 @@
-defmodule Nostr.Client.Relays.RelayManager do
+defmodule Nostr.Relay.RelayManager do
   @moduledoc """
   Accepts a list of relays and makes sure they're connected to if available
   """
 
   use DynamicSupervisor
 
-  alias Nostr.Client.Relays.{RelayManager, RelaySocket}
+  alias Nostr.Relay.{RelayManager, Socket}
 
   def start_link(_options) do
     opts = [strategy: :one_for_one, name: RelayManager]
@@ -19,7 +19,7 @@ defmodule Nostr.Client.Relays.RelayManager do
   end
 
   def add(relay_url) do
-    DynamicSupervisor.start_child(RelayManager, {RelaySocket, [relay_url, self()]})
+    DynamicSupervisor.start_child(RelayManager, {Socket, [relay_url, self()]})
   end
 
   def active_pids() do
@@ -28,9 +28,9 @@ defmodule Nostr.Client.Relays.RelayManager do
     |> Enum.filter(&relay_socket_ready?/1)
   end
 
-  defp get_pid({:undefined, pid, :worker, [RelaySocket]}), do: pid
+  defp get_pid({:undefined, pid, :worker, [Socket]}), do: pid
 
   defp relay_socket_ready?(pid) do
-    RelaySocket.ready?(pid)
+    Socket.ready?(pid)
   end
 end

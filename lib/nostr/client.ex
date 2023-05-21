@@ -11,7 +11,7 @@ defmodule Nostr.Client do
   alias NostrBasics.Keys.{PublicKey, PrivateKey}
   alias NostrBasics.Models.{Profile, Note}
 
-  alias Nostr.Client.Relays.RelayManager
+  alias Nostr.Relay.RelayManager
   alias Nostr.Client.Tasks
 
   alias Nostr.Client.Subscriptions.{
@@ -54,8 +54,8 @@ defmodule Nostr.Client do
   @impl true
   def init(_config) do
     children = [
-      RelayManager,
-      {DynamicSupervisor, name: Nostr.Subscriptions, strategy: :one_for_one}
+      #RelayManager
+      #{DynamicSupervisor, name: Nostr.Subscriptions, strategy: :one_for_one}
     ]
 
     Supervisor.init(children, strategy: :one_for_one)

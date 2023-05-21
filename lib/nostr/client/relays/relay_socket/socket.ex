@@ -1,7 +1,7 @@
-defmodule Nostr.Client.Relays.RelaySocket do
+defmodule Nostr.Relay.Socket do
   require Logger
 
-  alias Nostr.Client.Relays.RelaySocket.Server
+  alias Nostr.Relay.Socket.Server
 
   defstruct [
     :url,
@@ -20,7 +20,7 @@ defmodule Nostr.Client.Relays.RelaySocket do
   Creates a socket to a relay
 
   ## Examples
-    iex> Nostr.Client.Relays.RelaySocket.start_link("wss://relay.nostr.pro")
+    iex> Nostr.Relay.RelaySocket.start_link("wss://relay.nostr.pro")
   """
   @spec start_link(list()) :: GenServer.on_start()
   def start_link([relay_url, owner_pid]) do
