@@ -3,7 +3,7 @@ defmodule Nostr.Client do
   Connects to a relay through websockets
   """
 
-  use Supervisor
+  use GenServer
 
   require Logger
 
@@ -11,18 +11,10 @@ defmodule Nostr.Client do
   alias NostrBasics.Keys.{PublicKey, PrivateKey}
   alias NostrBasics.Models.{Profile, Note}
 
-  alias Nostr.Relay.RelayManager
+  alias Nostr.Relay.{RelayManager, Socket}
   alias Nostr.Client.Tasks
 
   alias Nostr.Client.Subscriptions.{
-    AllSubscription,
-    ProfileSubscription,
-    RecommendedServersSubscription,
-    ContactsSubscription,
-    KindsSubscription,
-    NoteSubscription,
-    NotesSubscription,
-    DeletionsSubscription,
     RepostsSubscription,
     ReactionsSubscription,
     TimelineSubscription,
@@ -38,59 +30,57 @@ defmodule Nostr.Client do
     UpdateProfile
   }
 
-  @default_config {}
-
   @doc """
   Starts the client
-
-  ## Examples
-    iex> Nostr.Client.start_link("wss://relay.nostr.pro")
+  Starts connections to relays if supplied in the default config
+  The state of this GenServer will be the config (relays, filters).
   """
   @spec start_link(tuple()) :: Supervisor.on_start()
-  def start_link(config \\ @default_config) do
-    Supervisor.start_link(__MODULE__, config, name: __MODULE__)
+  def start_link(config) do
+    GenServer.start_link(__MODULE__, config, name: __MODULE__)
   end
 
   @impl true
-  def init(_config) do
-    children = [
-      #RelayManager
-      #{DynamicSupervisor, name: Nostr.Subscriptions, strategy: :one_for_one}
-    ]
-
-    Supervisor.init(children, strategy: :one_for_one)
+  def init(%{relay_urls: relays, filters: _filters} = config) do
+    if Enum.count(relays) > 0 do
+      Enum.map(relays, &add_relay(&1))
+    end
+    {:ok, config}
   end
 
   def add_relay(relay_url) do
     RelayManager.add(relay_url)
   end
 
-  @doc """
-  Get everything that goes through the relay
-  """
-  @spec subscribe_all() :: DynamicSupervisor.on_start_child()
-  def subscribe_all() do
-    DynamicSupervisor.start_child(
-      Nostr.Subscriptions,
-      {AllSubscription, [RelayManager.active_pids(), self()]}
-    )
+  @impl true
+  def handle_info({:event, _sub_id, %NostrBasics.Event{} = event}, state) do
+    print_to_console(event)
+    #IO.inspect(event, label: "client event recv")
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info(msg, state) do 
+    IO.inspect(msg, label: "client info msg")
+    {:noreply, state}
+  end
+
+  def subscribe_all(), do: subscribe_all(RelayManager.active_pids())
+
+  def subscribe_all(relays) do
+    Enum.map(relays, &Socket.subscribe_all(__MODULE__, &1))
   end
 
   @doc """
   Get an author's profile
   """
-  @spec subscribe_profile(PublicKey.id()) ::
-          {:ok, DynamicSupervisor.on_start_child()} | {:error, String.t()}
-  def subscribe_profile(pubkey) do
+  def subscribe_profile(pubkey), do: subscribe_profile(RelayManager.active_pids(), pubkey)
+
+  @spec subscribe_profile(PublicKey.id()) :: List.t() | {:error, String.t()}
+  def subscribe_profile(relays, pubkey) do
     case PublicKey.to_binary(pubkey) do
-      {:ok, binary_pubkey} ->
-        {
-          :ok,
-          DynamicSupervisor.start_child(
-            Nostr.Subscriptions,
-            {ProfileSubscription, [RelayManager.active_pids(), binary_pubkey, self()]}
-          )
-        }
+      {:ok, binary_pubkey} -> 
+        Enum.map(relays, &Socket.subscribe_profile(__MODULE__, &1, binary_pubkey))
 
       {:error, message} ->
         {:error, message}
@@ -100,12 +90,10 @@ defmodule Nostr.Client do
   @doc """
   Get an author's recommended servers
   """
-  @spec subscribe_recommended_servers() :: DynamicSupervisor.on_start_child()
+  @spec subscribe_recommended_servers() :: List.t()
   def subscribe_recommended_servers() do
-    DynamicSupervisor.start_child(
-      Nostr.Subscriptions,
-      {RecommendedServersSubscription, [RelayManager.active_pids(), self()]}
-    )
+    RelayManager.active_pids()
+    |> Enum.map(&Socket.subscribe_recommended_servers(__MODULE__, &1))
   end
 
   @doc """
@@ -120,14 +108,11 @@ defmodule Nostr.Client do
   @doc """
   Get an author's contacts
   """
-  @spec subscribe_contacts(PublicKey.id()) :: DynamicSupervisor.on_start_child()
-  def subscribe_contacts(pubkey) do
+  @spec subscribe_contacts(list(), PublicKey.id()) :: list()
+  def subscribe_contacts(relays, pubkey) do
     case PublicKey.to_binary(pubkey) do
       {:ok, binary_pubkey} ->
-        DynamicSupervisor.start_child(
-          Nostr.Subscriptions,
-          {ContactsSubscription, [RelayManager.active_pids(), binary_pubkey, self()]}
-        )
+        Enum.map(relays, &Socket.subscribe_contacts(__MODULE__, &1, binary_pubkey))
 
       {:error, message} ->
         {:error, message}
@@ -200,14 +185,14 @@ defmodule Nostr.Client do
   @doc """
   Get a note by id
   """
-  @spec subscribe_note(Note.id()) :: DynamicSupervisor.on_start_child()
-  def subscribe_note(note_id) do
+  @spec subscribe_note(Note.id()) :: List.t()
+  def subscribe_note(note_id), do: subscribe_note(RelayManager.active_pids(), note_id)
+
+  @spec subscribe_note(List.t(), Note.id()) :: List.t()
+  def subscribe_note(relays, note_id) do
     case Event.Id.to_binary(note_id) do
       {:ok, binary_note_id} ->
-        DynamicSupervisor.start_child(
-          Nostr.Subscriptions,
-          {NoteSubscription, [RelayManager.active_pids(), binary_note_id, self()]}
-        )
+        Enum.map(relays, &Socket.subscribe_note(__MODULE__, &1, binary_note_id))
 
       {:error, message} ->
         {:error, message}
@@ -217,39 +202,37 @@ defmodule Nostr.Client do
   @doc """
   Get a list of event of specific kinds
   """
-  @spec subscribe_kinds(list(integer())) ::
-          {:ok, DynamicSupervisor.on_start_child()} | {:error, String.t()}
-  def subscribe_kinds(kinds) when is_list(kinds) do
-    DynamicSupervisor.start_child(
-      Nostr.Subscriptions,
-      {KindsSubscription, [RelayManager.active_pids(), kinds, self()]}
-    )
+  def subscribe_kinds(kinds), do: subscribe_kinds(RelayManager.active_pids(), kinds)
+
+  @spec subscribe_kinds(list(), list(integer())) ::
+          List.t() | {:error, String.t()}
+  def subscribe_kinds(relays, kinds) when is_list(kinds) do
+    Enum.map(relays, &Socket.subscribe_kinds(__MODULE__, &1, kinds))
   end
 
   @doc """
   Get a list of author's notes
   """
-  @spec subscribe_notes(list(Note.id()) | Note.id()) ::
-          {:ok, DynamicSupervisor.on_start_child()} | {:error, String.t()}
+  @spec subscribe_notes(list() | String.t()) :: list()
   def subscribe_notes(pubkeys) when is_list(pubkeys) do
+    RelayManager.active_pids()
+    |> subscribe_notes(pubkeys)
+  end
+
+  def subscribe_notes(pubkey), do: subscribe_notes([pubkey])
+
+  @spec subscribe_notes(list() | String.t()) ::
+          list() | {:error, String.t()}
+  def subscribe_notes(relays, pubkeys) when is_list(pubkeys) do
     case PublicKey.to_binary(pubkeys) do
       {:ok, binary_pub_keys} ->
-        {
-          :ok,
-          DynamicSupervisor.start_child(
-            Nostr.Subscriptions,
-            {NotesSubscription, [RelayManager.active_pids(), binary_pub_keys, self()]}
-          )
-        }
-
+        async_map(relays, &Socket.subscribe_notes(__MODULE__, &1, binary_pub_keys))
       {:error, message} ->
         {:error, message}
     end
   end
 
-  def subscribe_notes(pubkey) do
-    subscribe_notes([pubkey])
-  end
+  def subscribe_notes(relays, pubkey), do: subscribe_notes(relays, [pubkey])
 
   @doc """
   Deletes events
@@ -269,14 +252,16 @@ defmodule Nostr.Client do
   @doc """
   Get an author's deletions
   """
-  @spec subscribe_deletions(list()) :: DynamicSupervisor.on_start_child()
   def subscribe_deletions(pubkeys) do
+    RelayManager.active_pids()
+    |> subscribe_deletions(pubkeys) 
+  end
+
+  @spec subscribe_deletions(list(), list()) :: list()
+  def subscribe_deletions(relays, pubkeys) when is_list(pubkeys) do
     case PublicKey.to_binary(pubkeys) do
       {:ok, binary_pubkeys} ->
-        DynamicSupervisor.start_child(
-          Nostr.Subscriptions,
-          {DeletionsSubscription, [RelayManager.active_pids(), binary_pubkeys, self()]}
-        )
+        Enum.map(relays, &Socket.subscribe_deletions(__MODULE__, &1, binary_pubkeys))
 
       {:error, error} ->
         {:error, error}
@@ -355,10 +340,13 @@ defmodule Nostr.Client do
   Sends a note to the relay
   """
   @spec send_note(String.t(), PrivateKey.id()) :: :ok | {:error, String.t()}
+  def send_note(note, privkey, relay_pids) do
+    Tasks.SendNote.execute(note, privkey, relay_pids)
+  end
+
   def send_note(note, privkey) do
     relay_pids = RelayManager.active_pids()
-
-    Tasks.SendNote.execute(note, privkey, relay_pids)
+    send_note(note, privkey, relay_pids)
   end
 
   @spec react(Note.id(), PrivateKey.id(), String.t()) ::
@@ -381,14 +369,31 @@ defmodule Nostr.Client do
   end
 
   def subscriptions() do
-    DynamicSupervisor.which_children(Nostr.Subscriptions)
-    |> Enum.map(fn {:undefined, pid, :worker, [type]} ->
-      {pid, type}
-    end)
+    Socket.subscriptions(self())
   end
 
   def unsubscribe(pid) do
     DynamicSupervisor.terminate_child(Nostr.Subscriptions, pid)
     #    GenServer.call(pid, {:terminate, :shutdown})
+  end
+
+  @doc """
+  From WitchCraft: https://github.com/witchcrafters/witchcraft/blob/main/lib/witchcraft/functor.ex#L204
+  """
+  def async_map(functor, fun) do
+    functor
+    |> Enum.map(fn item ->
+      Task.async(fn -> fun.(item) end)
+    end)
+    |> Enum.map(&Task.await/1)
+  end
+
+  def print_to_console(%{id: id, created_at: created_at, content: content, pubkey: pubkey}) do
+    IO.puts("""
+      ####### EVENT #{id}
+      ## seen at: #{created_at}
+      ## > #{content}
+      ## from: #{NostrBasics.Keys.PublicKey.to_npub(pubkey)}
+      """)
   end
 end
