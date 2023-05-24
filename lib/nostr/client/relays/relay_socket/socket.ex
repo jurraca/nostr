@@ -62,41 +62,41 @@ defmodule Nostr.Relay.Socket do
   end
 
   @spec subscribe_all(pid(), integer()) :: atom()
-  def subscribe_all(pid, limit \\ 10) do
-    GenServer.call(pid, {:all, limit, self()})
+  def subscribe_all(caller, relay_pid, limit \\ 10) do
+    GenServer.call(relay_pid, {:all, limit, caller})
   end
 
-  def subscribe_profile(pid, pubkey) do
-    GenServer.call(pid, {:profile, pubkey, self()})
+  def subscribe_profile(caller, relay_pid, pubkey) do
+    GenServer.call(relay_pid, {:profile, pubkey, caller})
   end
 
-  def subscribe_recommended_servers(pid) do
-    GenServer.call(pid, {:recommended_servers, self()})
+  def subscribe_recommended_servers(caller, relay_pid) do
+    GenServer.call(relay_pid, {:recommended_servers, caller})
   end
 
-  @spec subscribe_contacts(pid(), <<_::256>>) :: atom()
-  def subscribe_contacts(pid, pubkey, limit \\ 10) do
-    GenServer.call(pid, {:contacts, pubkey, limit, self()})
+  @spec subscribe_contacts(pid(), pid(), <<_::256>>) :: atom()
+  def subscribe_contacts(caller, relay_pid, pubkey, limit \\ 10) do
+    GenServer.call(relay_pid, {:contacts, pubkey, limit, caller})
   end
 
-  @spec subscribe_note(pid(), <<_::256>>) :: atom()
-  def subscribe_note(pid, note_id) do
-    GenServer.call(pid, {:note, note_id, self()})
+  @spec subscribe_note(pid(), pid(), <<_::256>>) :: atom()
+  def subscribe_note(caller, relay_pid, note_id) do
+    GenServer.call(relay_pid, {:note, note_id, caller})
   end
 
-  @spec subscribe_kinds(pid(), list(integer()), integer()) :: atom()
-  def subscribe_kinds(pid, kinds, limit \\ 10) when is_list(kinds) do
-    GenServer.call(pid, {:kinds, kinds, limit, self()})
+  @spec subscribe_kinds(pid(), pid(), list(integer()), integer()) :: atom()
+  def subscribe_kinds(caller, relay_pid, kinds, limit \\ 10) when is_list(kinds) do
+    GenServer.call(relay_pid, {:kinds, kinds, limit, caller})
   end
 
-  @spec subscribe_notes(pid(), list(<<_::256>>), integer()) :: atom()
-  def subscribe_notes(pid, pubkeys, limit \\ 10) when is_list(pubkeys) do
-    GenServer.call(pid, {:notes, pubkeys, limit, self()})
+  @spec subscribe_notes(pid(), pid(), list(<<_::256>>), integer()) :: atom()
+  def subscribe_notes(caller, relay_pid, pubkeys, limit \\ 10) when is_list(pubkeys) do
+    GenServer.call(relay_pid, {:notes, pubkeys, limit, caller})
   end
 
   @spec subscribe_deletions(pid(), list(<<_::256>>), integer()) :: atom()
-  def subscribe_deletions(pid, pubkeys, limit \\ 10) when is_list(pubkeys) do
-    GenServer.call(pid, {:deletions, pubkeys, limit, self()})
+  def subscribe_deletions(caller, relay_pid, pubkeys, limit \\ 10) when is_list(pubkeys) do
+    GenServer.call(relay_pid, {:deletions, pubkeys, limit, caller})
   end
 
   @spec subscribe_reposts(pid(), list(<<_::256>>), integer()) :: atom()

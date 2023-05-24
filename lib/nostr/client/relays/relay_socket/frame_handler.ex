@@ -10,10 +10,10 @@ defmodule Nostr.Relay.Socket.FrameHandler do
     |> handle_message(subscriptions, relay_url, owner_pid)
   end
 
-  defp handle_message({:event, subscription_id, event}, subscriptions, relay_url, _owner_pid) do
+  defp handle_message({:event, subscription_id, event}, subscriptions, relay_url, owner_pid) do
     case Keyword.get(subscriptions, String.to_atom(subscription_id)) do
       nil -> {relay_url, event}
-      subscriber -> send(subscriber, {relay_url, subscription_id, event})
+      subscriber -> send(owner_pid, {:event, subscription_id, event})
     end
   end
 

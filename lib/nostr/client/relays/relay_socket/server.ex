@@ -205,7 +205,7 @@ defmodule Nostr.Relay.Socket.Server do
 
     {:noreply, state}
   end
-
+  
   @impl true
   def handle_info(message, state) do
     MessageDispatcher.dispatch(message, state)
