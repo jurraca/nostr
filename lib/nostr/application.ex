@@ -3,17 +3,10 @@ defmodule Nostr.Application do
 
 	def start(_type, _args) do
 		children = [
-			Nostr.Relay.RelayManager,
-			{Nostr.Client, default_config()}
+			Nostr.Relay.RelayManager
+			#{Nostr.Client, %{relay_urls: [], filters: []}}
 		]
 
 		Supervisor.start_link(children, strategy: :one_for_one)
-	end
-
-	def default_config() do
-		%{
-		    relay_urls: [ "ws://localhost:8080" ],
-		    filters: []
-		}
 	end
 end

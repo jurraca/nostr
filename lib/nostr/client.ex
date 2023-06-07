@@ -41,26 +41,88 @@ defmodule Nostr.Client do
   end
 
   @impl true
-  def init(%{relay_urls: relays, filters: _filters} = config) do
-    if Enum.count(relays) > 0 do
-      Enum.map(relays, &add_relay(&1))
-    end
-    {:ok, config}
+  def init(config) do
+    state = Map.put_new(config, :listeners, [])
+    {:ok, state}
   end
 
-  def add_relay(relay_url) do
-    RelayManager.add(relay_url)
+  def add_relay(relay_url), do: RelayManager.add(relay_url)
+
+  def get_subscriptions(relay_pid) do
+    {Socket.url(relay_pid), Socket.subscriptions(relay_pid)}
+  end
+
+  def get_subscriptions_all() do
+    RelayManager.active_pids()
+    |> Enum.map(&get_subscriptions(&1))
+    |> List.flatten()
+  end
+
+  def add_subscription(from, atom_subscription_id, json) do
+    GenServer.cast(__MODULE__, {:add_sub, from, atom_subscription_id, json})
+  end
+
+  @doc """
+  A process to push events to when received by the client
+  """
+  def set_listener(pid) do
+    GenServer.cast(__MODULE__, {:set_listener, pid})
+  end
+
+  def remove_listener(pid) do
+    GenServer.cast(__MODULE__, {:remove_listener, pid})
+  end
+
+  def get_state(), do: GenServer.call(__MODULE__, {:state})
+
+  @impl true
+  def handle_call({:state}, _from, state) do
+    IO.inspect(state, label: "state")
+    {:reply, :ok, state}
   end
 
   @impl true
-  def handle_info({:event, _sub_id, %NostrBasics.Event{} = event}, state) do
-    print_to_console(event)
-    #IO.inspect(event, label: "client event recv")
+  def handle_cast({:add_sub, relay_pid, atom_subscription_id, _json}, %{filters: filters} = state) do
+    IO.inspect("relay pid: #{:erlang.pid_to_list(relay_pid)}")
+    filter = {relay_pid, atom_subscription_id}
+    filters = filters ++ [filter]
+    {:noreply, %{state | filters: filters}}
+  end
+
+  @impl true
+  def handle_cast({:set_listener, pid}, %{listeners: listeners} = state) do
+    listeners = listeners ++ [pid]
+    {:noreply, %{state | listeners: listeners}}
+  end
+
+  @impl true
+  def handle_cast({:remove_listener, pid}, %{listeners: listeners} = state) do
+    Enum.reduce(listeners, [], fn x, acc ->
+      if x == pid do
+        acc
+      else
+        acc ++ [x]
+      end
+    end)
+    {:noreply, %{state | listeners: listeners}}
+  end
+
+  @impl true
+  def handle_info({:event, _sub_id, _event}, %{listeners: []} = state) do
+    IO.inspect("Event received, but no listeners subscribed to this client #{self()} !")
     {:noreply, state}
   end
 
   @impl true
-  def handle_info(msg, state) do 
+  def handle_info({:event, _sub_id, %NostrBasics.Event{} = event}, %{listeners: listeners} = state) do
+    #print_to_console(event)
+    IO.inspect("Received event #{event.id} in handle_info")
+    for pid <- listeners, do: send(pid, event)
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info(msg, state) do
     IO.inspect(msg, label: "client info msg")
     {:noreply, state}
   end
@@ -68,7 +130,7 @@ defmodule Nostr.Client do
   def subscribe_all(), do: subscribe_all(RelayManager.active_pids())
 
   def subscribe_all(relays) do
-    Enum.map(relays, &Socket.subscribe_all(__MODULE__, &1))
+    Enum.map(relays, &Socket.subscribe_all(self(), &1))
   end
 
   @doc """
@@ -79,7 +141,7 @@ defmodule Nostr.Client do
   @spec subscribe_profile(PublicKey.id()) :: List.t() | {:error, String.t()}
   def subscribe_profile(relays, pubkey) do
     case PublicKey.to_binary(pubkey) do
-      {:ok, binary_pubkey} -> 
+      {:ok, binary_pubkey} ->
         Enum.map(relays, &Socket.subscribe_profile(__MODULE__, &1, binary_pubkey))
 
       {:error, message} ->
@@ -254,7 +316,7 @@ defmodule Nostr.Client do
   """
   def subscribe_deletions(pubkeys) do
     RelayManager.active_pids()
-    |> subscribe_deletions(pubkeys) 
+    |> subscribe_deletions(pubkeys)
   end
 
   @spec subscribe_deletions(list(), list()) :: list()
@@ -395,5 +457,10 @@ defmodule Nostr.Client do
       ## > #{content}
       ## from: #{NostrBasics.Keys.PublicKey.to_npub(pubkey)}
       """)
+  end
+
+  @spec generate_random_id(integer()) :: binary()
+  defp generate_random_id(size \\ 16) do
+    :crypto.strong_rand_bytes(size) |> Binary.to_hex()
   end
 end
