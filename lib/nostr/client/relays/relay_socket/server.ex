@@ -19,6 +19,13 @@ defmodule Nostr.Relay.Socket.Server do
   end
 
   @impl true
+  def handle_cast({:subscribe, sub_id, encoded_filter, subscriber}, state) do
+    send(self(), {:subscription_request, state, sub_id, encoded_filter, subscriber})
+
+    {:noreply, state}
+  end
+
+  @impl true
   def handle_cast({:unsubscribe, subscription_id}, state) do
     state =
       state

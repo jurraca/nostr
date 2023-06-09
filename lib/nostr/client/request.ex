@@ -34,7 +34,7 @@ defmodule Nostr.Client.Request do
     request_id = generate_random_id()
 
     # got to specify kinds, or else, some relays won't return anything
-    filter = %{kinds: [1, 5, 6, 7, 9735], limit: limit}
+    filter = %{kinds: [1, 5, 6, 7, 9735], since: since(24), limit: limit}
     json = request(request_id, filter)
 
     atom_request_id = String.to_atom(request_id)
@@ -44,7 +44,7 @@ defmodule Nostr.Client.Request do
 
   def kinds(kinds, limit \\ 10) when is_list(kinds) do
     request_id = generate_random_id()
-    filter = %{kinds: kinds, limit: limit}
+    filter = %{kinds: kinds, since: since(24), limit: limit}
     json = request(request_id, filter)
 
     atom_request_id = String.to_atom(request_id)
@@ -127,6 +127,7 @@ defmodule Nostr.Client.Request do
     %{
       authors: hex_pubkeys,
       kinds: kinds,
+      since: since(24),
       limit: limit
     }
   end
@@ -141,12 +142,26 @@ defmodule Nostr.Client.Request do
   end
 
   defp request(id, filter) do
-    ["REQ", id, filter]
-    |> Jason.encode!()
+    case validate_filter(filter) do
+      {:ok, _} -> Jason.encode!(["REQ", id, filter])
+      {:error, _} = err -> err
+    end
   end
 
   @spec generate_random_id(integer()) :: binary()
   defp generate_random_id(size \\ @default_id_size) do
     :crypto.strong_rand_bytes(size) |> Binary.to_hex()
+  end
+
+  defp since(hours) when is_integer(hours) do
+    DateTime.to_unix(DateTime.utc_now()) - (3600 * hours)
+  end
+
+  # a filter should always have kinds, since, and limit
+  defp validate_filter(%{kinds: _, since: _, limit: _} = filter), do: {:ok, filter}
+
+  defp validate_filter(filter) do
+    keys = filter |> Map.keys() |> Enum.join(", ")
+    {:error, "Filter missing required keys: existing keys are #{keys}"}
   end
 end

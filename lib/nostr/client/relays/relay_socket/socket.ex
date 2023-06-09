@@ -49,6 +49,10 @@ defmodule Nostr.Relay.Socket do
     GenServer.call(pid, :url)
   end
 
+  def subscribe(relay_pid, sub_id, encoded_filter, subscriber) do
+    GenServer.cast(relay_pid, {:subscribe, sub_id, encoded_filter, subscriber})
+  end
+
   @doc """
   Revokes a subscription from a relay
   """
