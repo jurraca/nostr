@@ -49,8 +49,13 @@ defmodule Nostr.Relay.Socket do
     GenServer.call(pid, :url)
   end
 
-  def subscribe(relay_pid, sub_id, encoded_filter, subscriber) do
-    GenServer.cast(relay_pid, {:subscribe, sub_id, encoded_filter, subscriber})
+  def subscribe(relay_pid, sub_id, encoded_filter) do
+    case ready?(relay_pid) do
+      true -> GenServer.cast(relay_pid, {:subscribe, sub_id, encoded_filter})
+      false ->
+        :timer.sleep(100)
+        subscribe(relay_pid, sub_id, encoded_filter)
+    end
   end
 
   @doc """
@@ -65,7 +70,7 @@ defmodule Nostr.Relay.Socket do
     GenServer.cast(pid, {:send_event, event})
   end
 
-  @spec subscribe_all(pid(), integer()) :: atom()
+  #@spec subscribe_all(pid(), pid(), integer()) :: atom()
   def subscribe_all(caller, relay_pid, limit \\ 10) do
     GenServer.call(relay_pid, {:all, limit, caller})
   end

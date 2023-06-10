@@ -14,7 +14,7 @@ defmodule Nostr.Relay.Socket.MessageDispatcher do
         state = put_in(state.conn, conn) |> handle_responses(responses)
         if state.closing? do
          do_close(state)
-        else 
+        else
           {:noreply, state}
         end
 
@@ -108,7 +108,7 @@ defmodule Nostr.Relay.Socket.MessageDispatcher do
         %{state | closing?: true}
 
       {:text, text}, state ->
-        FrameHandler.handle_text_frame(text, subscriptions, url, owner_pid)
+        FrameHandler.handle_text_frame(text, url, owner_pid)
         state
 
       frame, state ->

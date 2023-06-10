@@ -19,9 +19,8 @@ defmodule Nostr.Relay.Socket.Server do
   end
 
   @impl true
-  def handle_cast({:subscribe, sub_id, encoded_filter, subscriber}, state) do
-    send(self(), {:subscription_request, state, sub_id, encoded_filter, subscriber})
-
+  def handle_cast({:subscribe, sub_id, encoded_filter}, state) do
+    state = Sender.send_subscription_request(state, sub_id, encoded_filter)
     {:noreply, state}
   end
 
@@ -209,10 +208,19 @@ defmodule Nostr.Relay.Socket.Server do
   @impl true
   def handle_info({:subscription_request, state, subscription_id, json, subscriber}, state) do
     state = Sender.send_subscription_request(state, subscription_id, json, subscriber)
-
     {:noreply, state}
   end
-  
+
+  #@impl true
+  #def handle_info({:DOWN, _ref, :process, pid, reason}, state) do
+  #  {:noreply, state}
+  #end
+
+  @impl true
+  def handle_info({:console, :ping, _url}, state) do
+    {:noreply, state}
+  end
+
   @impl true
   def handle_info(message, state) do
     MessageDispatcher.dispatch(message, state)

@@ -3,7 +3,11 @@ defmodule Nostr.Client.Request do
   Transforms simple functions into JSON requests that relays can interpret
   """
 
+  alias NostrBasics.Filter
+  alias NostrBasics.Filter.Serializer
+
   @default_id_size 16
+  @default_since 36 # hours back for messages
 
   @metadata_kind 0
   @text_kind 1
@@ -30,26 +34,14 @@ defmodule Nostr.Client.Request do
     get_by_ids([id], @text_kind)
   end
 
+  # fix and use NostrBasics.to_query/1
   def all(limit \\ 10) do
-    request_id = generate_random_id()
-
     # got to specify kinds, or else, some relays won't return anything
-    filter = %{kinds: [1, 5, 6, 7, 9735], since: since(24), limit: limit}
-    json = request(request_id, filter)
-
-    atom_request_id = String.to_atom(request_id)
-
-    {atom_request_id, json}
+    new(%Filter{kinds: [1, 5, 6, 7, 9735], since: @default_since, limit: limit})
   end
 
   def kinds(kinds, limit \\ 10) when is_list(kinds) do
-    request_id = generate_random_id()
-    filter = %{kinds: kinds, since: since(24), limit: limit}
-    json = request(request_id, filter)
-
-    atom_request_id = String.to_atom(request_id)
-
-    {atom_request_id, json}
+    new(%Filter{kinds: kinds, since: @default_since, limit: limit})
   end
 
   def notes(pubkeys, limit \\ 10) when is_list(pubkeys) do
@@ -69,83 +61,81 @@ defmodule Nostr.Client.Request do
   end
 
   def encrypted_direct_messages(<<_::256>> = pubkey, limit \\ 10) do
-    tags = [pubkey |> Binary.to_hex()]
-    get_by_kind(@encrypted_direct_message_kind, tags, limit)
-  end
-
-  defp get_by_kind(kind, pubkeys, limit) do
-    request_id = generate_random_id()
-    filter = filter_by_kind(kind, pubkeys, limit)
-    json = request(request_id, filter)
-
-    atom_request_id = String.to_atom(request_id)
-
-    {atom_request_id, json}
-  end
-
-  defp get_by_ids(ids, kind) do
-    request_id = generate_random_id()
-    filter = filter_by_ids(ids, kind, 1)
-    json = request(request_id, filter)
-
-    atom_request_id = String.to_atom(request_id)
-
-    {atom_request_id, json}
+    get_by_kind(@encrypted_direct_message_kind, [pubkey], limit)
   end
 
   defp get_by_authors(pubkeys, kinds, limit) do
-    request_id = generate_random_id()
-    filter = filter_by_authors(pubkeys, kinds, limit)
-    json = request(request_id, filter)
+    pubkeys
+    |> filter_by_authors(kinds, limit)
+    |> new()
+  end
 
-    atom_request_id = String.to_atom(request_id)
+  defp get_by_kind(kind, pubkeys, limit) do
+    kind
+    |> filter_by_kind(pubkeys, limit)
+    |> new()
+  end
 
-    {atom_request_id, json}
+  defp get_by_ids(ids, kind) do
+    ids
+    |> filter_by_ids(kind, 1)
+    |> new()
   end
 
   defp filter_by_kind(kind, pubkeys, limit) do
-    %{
+    %Filter{
       kinds: [kind],
-      "#p": pubkeys,
+      p: hexify(pubkeys),
       limit: limit
     }
   end
 
   defp filter_by_ids(ids, kind, limit) do
-    hex_ids = Enum.map(ids, &Binary.to_hex(&1))
-
-    %{
-      ids: hex_ids,
+    %Filter{
+      ids: hexify(ids),
       kinds: [kind],
       limit: limit
     }
   end
 
   defp filter_by_authors(pubkeys, kinds, limit) when is_integer(limit) do
-    hex_pubkeys = Enum.map(pubkeys, &Binary.to_hex(&1))
-
-    %{
-      authors: hex_pubkeys,
+    %Filter{
+      authors: hexify(pubkeys),
       kinds: kinds,
-      since: since(24),
+      since: @default_since,
       limit: limit
     }
   end
 
   defp filter_by_authors(pubkeys, kinds, _) do
-    hex_pubkeys = Enum.map(pubkeys, &Binary.to_hex(&1))
-
-    %{
-      authors: hex_pubkeys,
+    %Filter{
+      authors: hexify(pubkeys),
       kinds: kinds
     }
   end
 
-  defp request(id, filter) do
+  @doc """
+  For a given Filter struct, encode a request and a request/subscription ID
+  """
+  def new(%Filter{} = filter) do
+    request_id = generate_random_id()
+    atom_request_id = String.to_atom(request_id)
+    encoded_req = format_request(request_id, filter)
+    {atom_request_id, encoded_req}
+  end
+
+  def new(_), do: {:error, "Filters must be created from a %NostrBasics.Filter{} struct."}
+
+  def format_request(id, %Filter{} = filter) do
     case validate_filter(filter) do
       {:ok, _} -> Jason.encode!(["REQ", id, filter])
       {:error, _} = err -> err
     end
+  end
+
+  def format_request(id, filter) when is_binary(filter) do
+    dec = Jason.decode!(filter)
+    Jason.encode!(["REQ", id, dec])
   end
 
   @spec generate_random_id(integer()) :: binary()
@@ -158,10 +148,21 @@ defmodule Nostr.Client.Request do
   end
 
   # a filter should always have kinds, since, and limit
-  defp validate_filter(%{kinds: _, since: _, limit: _} = filter), do: {:ok, filter}
+  # validate values for all three, if all true, serialize
+  defp validate_filter(%{kinds: k, since: s, limit: l} = filter) do
+    case [Enum.count(k) > 0, is_integer(s), is_integer(l)]
+    |> Enum.all?(&(&1)) do
+      true -> Serializer.to_req(filter)
+      false -> {:error, "Your filter must specify kinds, since and limit parameters."}
+    end
+  end
 
   defp validate_filter(filter) do
     keys = filter |> Map.keys() |> Enum.join(", ")
     {:error, "Filter missing required keys: existing keys are #{keys}"}
+  end
+
+  defp hexify(keys) when is_list(keys) do
+    Enum.map(keys, &Binary.to_hex(&1))
   end
 end

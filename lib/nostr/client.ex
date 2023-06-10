@@ -7,12 +7,13 @@ defmodule Nostr.Client do
 
   require Logger
 
-  alias NostrBasics.{Event}
+  alias NostrBasics.{Event, Filter}
   alias NostrBasics.Keys.{PublicKey, PrivateKey}
   alias NostrBasics.Models.{Profile, Note}
 
   alias Nostr.Relay.{RelayManager, Socket}
   alias Nostr.Client.Tasks
+  alias Nostr.Client.Request
 
   alias Nostr.Client.Subscriptions.{
     RepostsSubscription,
@@ -30,23 +31,51 @@ defmodule Nostr.Client do
     UpdateProfile
   }
 
-  @doc """
-  Starts the client
-  Starts connections to relays if supplied in the default config
-  The state of this GenServer will be the config (relays, filters).
-  """
-  @spec start_link(tuple()) :: Supervisor.on_start()
-  def start_link(config) do
-    GenServer.start_link(__MODULE__, config, name: __MODULE__)
+  def load_configuration(%{relays: relays, filters: []}) do
+    case add_relays(relays) do
+      {:ok, _} -> :ok
+      msg -> msg
+    end
   end
 
-  @impl true
-  def init(config) do
-    state = Map.put_new(config, :listeners, [])
-    {:ok, state}
+  def load_configuration(%{relays: relays, filters: filters}) do
+    with {:ok, _} <- add_relays(relays),
+      :ok <- subscribe(filters) do
+        :ok
+      end
   end
 
-  def add_relay(relay_url), do: RelayManager.add(relay_url)
+  def subscribe_to_topic(pubsub, topic) do
+    Phoenix.PubSub.subscribe(pubsub, topic)
+  end
+
+  def add_relay(relay_url) do
+    case RelayManager.add(relay_url) do
+      {:ok, _pid} = res -> res
+      {:error, _} = err -> err
+      _ -> {:error, "Couldn't add relay #{relay_url}"}
+    end
+  end
+
+  def add_relays(relays) when is_list(relays) do
+    results = async_map(relays, &add_relay/1)
+    case Enum.all?(results, fn x -> :ok == x end) do
+      true -> {:ok, relays}
+      _ -> {:error, relays}
+    end
+  end
+
+  def subscribe({req_id, filter}, relays) when is_binary(filter) do
+    Enum.map(relays, &Socket.subscribe(&1, req_id, filter))
+    {:ok, req_id}
+    # handle_results
+  end
+
+  def subscribe(subs) when is_list(subs) do
+    async_map(subs, &subscribe/1)
+    # handle_results
+    :ok
+  end
 
   def get_subscriptions(relay_pid) do
     {Socket.url(relay_pid), Socket.subscriptions(relay_pid)}
@@ -58,66 +87,9 @@ defmodule Nostr.Client do
     |> List.flatten()
   end
 
-  def add_subscription(from, atom_subscription_id, json) do
-    GenServer.cast(__MODULE__, {:add_sub, from, atom_subscription_id, json})
-  end
-
-  @doc """
-  A process to push events to when received by the client
-  """
-  def set_listener(pid) do
-    GenServer.cast(__MODULE__, {:set_listener, pid})
-  end
-
-  def remove_listener(pid) do
-    GenServer.cast(__MODULE__, {:remove_listener, pid})
-  end
-
-  def get_state(), do: GenServer.call(__MODULE__, {:state})
-
   @impl true
-  def handle_call({:state}, _from, state) do
-    IO.inspect(state, label: "state")
-    {:reply, :ok, state}
-  end
-
-  @impl true
-  def handle_cast({:add_sub, relay_pid, atom_subscription_id, _json}, %{filters: filters} = state) do
-    IO.inspect("relay pid: #{:erlang.pid_to_list(relay_pid)}")
-    filter = {relay_pid, atom_subscription_id}
-    filters = filters ++ [filter]
-    {:noreply, %{state | filters: filters}}
-  end
-
-  @impl true
-  def handle_cast({:set_listener, pid}, %{listeners: listeners} = state) do
-    listeners = listeners ++ [pid]
-    {:noreply, %{state | listeners: listeners}}
-  end
-
-  @impl true
-  def handle_cast({:remove_listener, pid}, %{listeners: listeners} = state) do
-    Enum.reduce(listeners, [], fn x, acc ->
-      if x == pid do
-        acc
-      else
-        acc ++ [x]
-      end
-    end)
-    {:noreply, %{state | listeners: listeners}}
-  end
-
-  @impl true
-  def handle_info({:event, _sub_id, _event}, %{listeners: []} = state) do
-    IO.inspect("Event received, but no listeners subscribed to this client #{self()} !")
-    {:noreply, state}
-  end
-
-  @impl true
-  def handle_info({:event, _sub_id, %NostrBasics.Event{} = event}, %{listeners: listeners} = state) do
-    #print_to_console(event)
-    IO.inspect("Received event #{event.id} in handle_info")
-    for pid <- listeners, do: send(pid, event)
+  def handle_info({:event, _sub_id, %NostrBasics.Event{}} = event, %{pubsub: pubsub} = state) do
+    Phoenix.PubSub.local_broadcast(pubsub, "events:", event)
     {:noreply, state}
   end
 
@@ -129,20 +101,19 @@ defmodule Nostr.Client do
 
   def subscribe_all(), do: subscribe_all(RelayManager.active_pids())
 
-  def subscribe_all(relays) do
-    Enum.map(relays, &Socket.subscribe_all(self(), &1))
-  end
+  def subscribe_all(relays), do: subscribe(Request.all(), relays)
 
   @doc """
   Get an author's profile
+  Takes an npub.
   """
-  def subscribe_profile(pubkey), do: subscribe_profile(RelayManager.active_pids(), pubkey)
+  def subscribe_profile(pubkey), do: subscribe(RelayManager.active_pids(), pubkey)
 
-  @spec subscribe_profile(PublicKey.id()) :: List.t() | {:error, String.t()}
-  def subscribe_profile(relays, pubkey) do
+  @spec subscribe_profile(List.t(), PublicKey.id()) :: List.t() | {:error, String.t()}
+  def subscribe_profile(relays, pubkey) when is_list(relays) do
     case PublicKey.to_binary(pubkey) do
       {:ok, binary_pubkey} ->
-        Enum.map(relays, &Socket.subscribe_profile(__MODULE__, &1, binary_pubkey))
+        Enum.map(relays, &subscribe(Request.profile(binary_pubkey), &1))
 
       {:error, message} ->
         {:error, message}
@@ -152,10 +123,11 @@ defmodule Nostr.Client do
   @doc """
   Get an author's recommended servers
   """
+  def subscribe_recommended_servers(), do: subscribe_recommended_servers(RelayManager.active_pids())
+
   @spec subscribe_recommended_servers() :: List.t()
-  def subscribe_recommended_servers() do
-    RelayManager.active_pids()
-    |> Enum.map(&Socket.subscribe_recommended_servers(__MODULE__, &1))
+  def subscribe_recommended_servers(relays) do
+    Enum.map(relays, &subscribe(Request.recommended_servers(), &1))
   end
 
   @doc """
@@ -269,7 +241,7 @@ defmodule Nostr.Client do
   @spec subscribe_kinds(list(), list(integer())) ::
           List.t() | {:error, String.t()}
   def subscribe_kinds(relays, kinds) when is_list(kinds) do
-    Enum.map(relays, &Socket.subscribe_kinds(__MODULE__, &1, kinds))
+    Enum.map(relays, &subscribe(Request.kinds(kinds), &1))
   end
 
   @doc """
@@ -288,115 +260,13 @@ defmodule Nostr.Client do
   def subscribe_notes(relays, pubkeys) when is_list(pubkeys) do
     case PublicKey.to_binary(pubkeys) do
       {:ok, binary_pub_keys} ->
-        async_map(relays, &Socket.subscribe_notes(__MODULE__, &1, binary_pub_keys))
+        async_map(relays, &subscribe(Request.notes(binary_pub_keys), &1))
       {:error, message} ->
         {:error, message}
     end
   end
 
   def subscribe_notes(relays, pubkey), do: subscribe_notes(relays, [pubkey])
-
-  @doc """
-  Deletes events
-  """
-  @spec delete_events(list(Note.id()), String.t(), PrivateKey.id()) ::
-          {:ok, GenServer.on_start()} | {:error, String.t()}
-  def delete_events(note_ids, note, privkey) do
-    with {:ok, binary_privkey} <- PrivateKey.to_binary(privkey),
-         {:ok, binary_note_ids} <- Event.Id.to_binary(note_ids) do
-      {:ok,
-       DeleteEvents.start_link(RelayManager.active_pids(), binary_note_ids, note, binary_privkey)}
-    else
-      {:error, message} -> {:error, message}
-    end
-  end
-
-  @doc """
-  Get an author's deletions
-  """
-  def subscribe_deletions(pubkeys) do
-    RelayManager.active_pids()
-    |> subscribe_deletions(pubkeys)
-  end
-
-  @spec subscribe_deletions(list(), list()) :: list()
-  def subscribe_deletions(relays, pubkeys) when is_list(pubkeys) do
-    case PublicKey.to_binary(pubkeys) do
-      {:ok, binary_pubkeys} ->
-        Enum.map(relays, &Socket.subscribe_deletions(__MODULE__, &1, binary_pubkeys))
-
-      {:error, error} ->
-        {:error, error}
-    end
-  end
-
-  @doc """
-  Reposts a note
-  """
-  @spec repost(Note.id(), PrivateKey.id()) :: {:ok, GenServer.on_start()} | {:error, String.t()}
-  def repost(note_id, privkey) do
-    with {:ok, binary_privkey} <- PrivateKey.to_binary(privkey),
-         {:ok, binary_note_id} <- Event.Id.to_binary(note_id) do
-      {:ok, SendRepost.start_link(RelayManager.active_pids(), binary_note_id, binary_privkey)}
-    else
-      {:error, message} -> {:error, message}
-    end
-  end
-
-  @doc """
-  Get an author's reposts
-  """
-  @spec subscribe_reposts(list()) :: DynamicSupervisor.on_start_child()
-  def subscribe_reposts(pubkeys) do
-    case PublicKey.to_binary(pubkeys) do
-      {:ok, binary_pubkeys} ->
-        DynamicSupervisor.start_child(
-          Nostr.Subscriptions,
-          {RepostsSubscription, [RelayManager.active_pids(), binary_pubkeys, self()]}
-        )
-
-      {:error, message} ->
-        {:error, message}
-    end
-  end
-
-  @doc """
-  Get an author's reactions
-  """
-  @spec subscribe_reactions(list(PublicKey.id())) ::
-          {:ok, DynamicSupervisor.on_start_child()} | {:error, String.t()}
-  def subscribe_reactions(pubkeys) do
-    case PublicKey.to_binary(pubkeys) do
-      {:ok, binary_pubkeys} ->
-        {
-          :ok,
-          DynamicSupervisor.start_child(
-            Nostr.Subscriptions,
-            {ReactionsSubscription, [RelayManager.active_pids(), binary_pubkeys, self()]}
-          )
-        }
-
-      {:error, message} ->
-        {:error, message}
-    end
-  end
-
-  @doc """
-  Get an author's realtime timeline including notes from everyone the author follows
-  """
-  @spec subscribe_timeline(PublicKey.id()) :: DynamicSupervisor.on_start_child()
-  def subscribe_timeline(pubkey) do
-    case PublicKey.to_binary(pubkey) do
-      {:ok, binary_pubkey} ->
-        DynamicSupervisor.start_child(
-          Nostr.Subscriptions,
-          {TimelineSubscription, [RelayManager.active_pids(), binary_pubkey, self()]}
-        )
-
-      {:error, message} ->
-        {:error, message}
-    end
-  end
 
   @doc """
   Sends a note to the relay
@@ -428,10 +298,6 @@ defmodule Nostr.Client do
     else
       {:error, message} -> {:error, message}
     end
-  end
-
-  def subscriptions() do
-    Socket.subscriptions(self())
   end
 
   def unsubscribe(pid) do

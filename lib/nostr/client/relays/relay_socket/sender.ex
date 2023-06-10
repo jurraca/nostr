@@ -25,11 +25,11 @@ defmodule Nostr.Relay.Socket.Sender do
     end
   end
 
-  @spec send_subscription_request(map(), atom(), String.t(), pid()) :: map()
-  def send_subscription_request(state, atom_subscription_id, json, subscriber) do
-    case send_subscription_to_websocket(state, atom_subscription_id, json, subscriber) do
+  @spec send_subscription_request(map(), atom(), String.t()) :: map()
+  def send_subscription_request(state, sub_id, json) do
+    case send_frame(state, {:text, json}) do
       {:ok, state} ->
-        state
+        add_subscription(state, sub_id)
 
       {:error, state, reason} ->
         Logger.error(reason)
@@ -61,21 +61,20 @@ defmodule Nostr.Relay.Socket.Sender do
     conn
   end
 
-  @spec send_subscription_to_websocket(map(), atom(), String.t(), pid()) ::
-          {:ok, map()} | {:error, map(), any()}
-  defp send_subscription_to_websocket(state, atom_subscription_id, json, subscriber) do
-    case send_frame(state, {:text, json}) do
-      {:ok, state} ->
-        {
-          :ok,
-          state
-          |> add_subscription(atom_subscription_id, subscriber)
-        }
-
-      {:error, state, message} ->
-        {:error, state, message}
-    end
-  end
+  #@spec send_subscription_to_websocket(map(), atom(), String.t(), pid()) ::
+  #        {:ok, map()} | {:error, map(), any()}
+  #defp send_subscription_to_websocket(state, atom_subscription_id, json) do
+  #  case send_frame(state, {:text, json}) do
+  #    {:ok, state} ->
+  #      {
+  #        :ok,
+  #        add_subscription(state, atom_subscription_id)
+  #      }
+#
+  #    {:error, state, message} ->
+  #      {:error, state, message}
+  #  end
+  #end
 
   @spec send_frame(map(), any()) :: {:ok, map()} | {:error, map(), any()}
   defp send_frame(state, frame) do
@@ -92,8 +91,8 @@ defmodule Nostr.Relay.Socket.Sender do
     end
   end
 
-  defp add_subscription(state, atom_subscription_id, subscriber) do
-    %{state | subscriptions: [{atom_subscription_id, subscriber}] ++ state.subscriptions}
+  defp add_subscription(state, atom_subscription_id) do
+    %{state | subscriptions: [atom_subscription_id] ++ state.subscriptions}
   end
 
   defp remove_subscription(%{subscriptions: subscriptions} = state, atom_subscription_id) do

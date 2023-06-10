@@ -5,46 +5,43 @@ defmodule Nostr.Relay.Socket.FrameHandler do
 
   alias NostrBasics.RelayMessage
 
-  def handle_text_frame(frame, subscriptions, relay_url, owner_pid) do
-    RelayMessage.parse(frame)
-    |> handle_message(subscriptions, relay_url, owner_pid)
+  @pubsub Phoenix.Pubsub
+
+  def handle_text_frame(frame, relay_url, owner_pid) do
+    frame
+    |> RelayMessage.parse()
+    |> handle_message(relay_url, owner_pid)
   end
 
-  defp handle_message({:event, subscription_id, event}, subscriptions, relay_url, owner_pid) do
-    case Keyword.get(subscriptions, String.to_atom(subscription_id)) do
-      nil -> {relay_url, event}
-      subscriber -> send(owner_pid, {:event, subscription_id, event})
-    end
+  defp handle_message({:event, subscription_id, event}, _relay_url, _owner_pid) do
+    sub_id_atom = String.to_atom(subscription_id)
+    Phoenix.PubSub.broadcast(@pubsub, "events:" <> sub_id_atom, event)
   end
 
-  defp handle_message({:notice, message}, _subscriptions, relay_url, owner_pid) do
+  defp handle_message({:notice, message}, relay_url, owner_pid) do
     send(owner_pid, {:console, :notice, %{url: relay_url, message: message}})
   end
 
   defp handle_message(
          {:end_of_stored_events, subscription_id},
-         subscriptions,
-         relay_url,
-         _owner_pid
+         relay_url
        ) do
     message = {:end_of_stored_events, relay_url, subscription_id}
 
-    case Keyword.get(subscriptions, String.to_atom(subscription_id)) do
-      nil -> message
-      subscriber -> send(subscriber, message)
-    end
+    sub_id = String.to_atom(subscription_id)
+    Phoenix.PubSub.broadcast(@pubsub, "events:" <> sub_id, message)
   end
 
-  defp handle_message({:ok, event_id, success?, message}, _subscriptions, relay_url, owner_pid) do
+  defp handle_message({:ok, event_id, success?, message}, relay_url, owner_pid) do
     info = %{url: relay_url, event_id: event_id, success?: success?, message: message}
     send(owner_pid, {:console, :ok, info})
   end
 
-  defp handle_message({:unknown, message}, _subscriptions, relay_url, owner_pid) do
+  defp handle_message({:unknown, message}, relay_url, owner_pid) do
     send(owner_pid, {:console, :unknown_relay_message, url: relay_url, message: message})
   end
 
-  defp handle_message({:json_error, message}, _subscriptions, relay_url, owner_pid) do
+  defp handle_message({:json_error, message}, relay_url, owner_pid) do
     send(owner_pid, {:console, :malformed_json_relay_message, url: relay_url, message: message})
   end
 end
