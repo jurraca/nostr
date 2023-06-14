@@ -7,13 +7,15 @@ defmodule Nostr.Client do
 
   require Logger
 
-  alias NostrBasics.{Event, Filter}
+  alias NostrBasics.Event
   alias NostrBasics.Keys.{PublicKey, PrivateKey}
   alias NostrBasics.Models.{Profile, Note}
 
   alias Nostr.Relay.{RelayManager, Socket}
   alias Nostr.Client.Tasks
   alias Nostr.Client.Request
+
+  alias Registry.PubSub
 
   alias Nostr.Client.Subscriptions.{
     RepostsSubscription,
@@ -32,21 +34,18 @@ defmodule Nostr.Client do
   }
 
   def load_configuration(%{relays: relays, filters: []}) do
-    case add_relays(relays) do
-      {:ok, _} -> :ok
-      msg -> msg
-    end
+    {:error, "No filters provided. Please create a filter before connecting to relays."}
   end
 
   def load_configuration(%{relays: relays, filters: filters}) do
     with {:ok, _} <- add_relays(relays),
-      :ok <- subscribe(filters) do
-        :ok
-      end
+      {:ok, sub_ids} <- subscribe(filters) do
+        {:ok, sub_ids}
+    end
   end
 
-  def subscribe_to_topic(pubsub, topic) do
-    Phoenix.PubSub.subscribe(pubsub, topic)
+  def subscribe_to_topic(pubsub, sub_id) do
+    Registry.register(pubsub, sub_id, [])
   end
 
   def add_relay(relay_url) do
@@ -59,26 +58,58 @@ defmodule Nostr.Client do
 
   def add_relays(relays) when is_list(relays) do
     results = async_map(relays, &add_relay/1)
-    case Enum.all?(results, fn x -> :ok == x end) do
-      true -> {:ok, relays}
-      _ -> {:error, relays}
+    with true <- Enum.all?(results, fn x -> {:ok, _pid} = x end) do
+      {:ok, Enum.map(results, fn {:ok, pid} -> pid end)}
+    else
+      false -> {:error, results}
     end
   end
 
+  # Single filter, default to all active relays
+  def subscribe({_req_id, _filter} = req) do
+    relays = Nostr.Relay.RelayManager.active_pids()
+    subscribe(req, relays)
+  end
+
+  # Single filter, subscribe to all relays
+  # Socket.subscribe is a genserver cast, so we don't wait for an answer
   def subscribe({req_id, filter}, relays) when is_binary(filter) do
     Enum.map(relays, &Socket.subscribe(&1, req_id, filter))
     {:ok, req_id}
-    # handle_results
   end
 
-  def subscribe(subs) when is_list(subs) do
-    async_map(subs, &subscribe/1)
-    # handle_results
-    :ok
+  # Multiple filters
+  def subscribe([head | tail], acc \\ []) do
+    case request_from_filter(head) do
+      {:ok, req} -> subscribe(tail, [req] ++ acc)
+      {:error, _} -> subscribe(tail, acc)
+    end
   end
 
-  def get_subscriptions(relay_pid) do
-    {Socket.url(relay_pid), Socket.subscriptions(relay_pid)}
+  # finish tail recursion, subscribe the individual {id, filter} tuples
+  # and return ids, deduplicated.
+  def subscribe([], filters) do
+    sub_ids = Enum.map(filters, fn req ->
+      {:ok, req_id} = subscribe(req)
+      req_id
+    end)
+    |> Enum.uniq()
+
+    {:ok, sub_ids}
+  end
+
+  def request_from_filter(filter) do
+    try do
+      {:ok, Request.new(filter)}
+    rescue
+      _ -> {:error, "Creating Request for filter id #{filter.id} failed."}
+    catch
+      {req_id, encoded_filter} -> subscribe({req_id, encoded_filter})
+    end
+  end
+
+  def get_subscriptions(pid) do
+    Registry.keys(Registry.PubSub, pid)
   end
 
   def get_subscriptions_all() do
@@ -89,7 +120,7 @@ defmodule Nostr.Client do
 
   @impl true
   def handle_info({:event, _sub_id, %NostrBasics.Event{}} = event, %{pubsub: pubsub} = state) do
-    Phoenix.PubSub.local_broadcast(pubsub, "events:", event)
+    #Registry.PubSub.dispatch(pubsub, "events:", event)
     {:noreply, state}
   end
 

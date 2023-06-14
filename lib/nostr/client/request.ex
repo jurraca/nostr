@@ -37,11 +37,11 @@ defmodule Nostr.Client.Request do
   # fix and use NostrBasics.to_query/1
   def all(limit \\ 10) do
     # got to specify kinds, or else, some relays won't return anything
-    new(%Filter{kinds: [1, 5, 6, 7, 9735], since: @default_since, limit: limit})
+    new(%Filter{kinds: [1, 5, 6, 7, 9735], since: since(@default_since), limit: limit})
   end
 
   def kinds(kinds, limit \\ 10) when is_list(kinds) do
-    new(%Filter{kinds: kinds, since: @default_since, limit: limit})
+    new(%Filter{kinds: kinds, since: since(@default_since), limit: limit})
   end
 
   def notes(pubkeys, limit \\ 10) when is_list(pubkeys) do
@@ -102,7 +102,7 @@ defmodule Nostr.Client.Request do
     %Filter{
       authors: hexify(pubkeys),
       kinds: kinds,
-      since: @default_since,
+      since: since(@default_since),
       limit: limit
     }
   end
@@ -117,7 +117,8 @@ defmodule Nostr.Client.Request do
   @doc """
   For a given Filter struct, encode a request and a request/subscription ID
   """
-  def new(%Filter{} = filter) do
+  def new(filter) do
+    filter = cast_to_struct(filter)
     request_id = generate_random_id()
     atom_request_id = String.to_atom(request_id)
     encoded_req = format_request(request_id, filter)
@@ -138,19 +139,24 @@ defmodule Nostr.Client.Request do
     Jason.encode!(["REQ", id, dec])
   end
 
+  def cast_to_struct(filter) do
+    params = filter |> Map.from_struct() |> Map.to_list()
+    struct(%Filter{}, params)
+  end
+
   @spec generate_random_id(integer()) :: binary()
   defp generate_random_id(size \\ @default_id_size) do
     :crypto.strong_rand_bytes(size) |> Binary.to_hex()
   end
 
   defp since(hours) when is_integer(hours) do
-    DateTime.to_unix(DateTime.utc_now()) - (3600 * hours)
+    DateTime.from_unix!(DateTime.to_unix(DateTime.utc_now()) - (3600 * hours))
   end
 
   # a filter should always have kinds, since, and limit
   # validate values for all three, if all true, serialize
   defp validate_filter(%{kinds: k, since: s, limit: l} = filter) do
-    case [Enum.count(k) > 0, is_integer(s), is_integer(l)]
+    case [Enum.count(k) > 0, is_integer(l)]
     |> Enum.all?(&(&1)) do
       true -> Serializer.to_req(filter)
       false -> {:error, "Your filter must specify kinds, since and limit parameters."}
