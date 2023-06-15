@@ -28,6 +28,13 @@ defmodule Nostr.Relay.RelayManager do
     |> Enum.filter(&relay_socket_ready?/1)
   end
 
+  def get_active_subscriptions() do
+    active_pids()
+    |> Enum.map(fn pid -> Socket.subscriptions(pid) end)
+    |> List.flatten()
+    |> Enum.uniq()
+  end
+
   defp get_pid({:undefined, pid, :worker, [Socket]}), do: pid
 
   defp relay_socket_ready?(pid) do
