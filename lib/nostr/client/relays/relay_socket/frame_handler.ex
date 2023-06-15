@@ -5,17 +5,17 @@ defmodule Nostr.Relay.Socket.FrameHandler do
 
   alias NostrBasics.RelayMessage
 
-  @pubsub Phoenix.Pubsub
-
   def handle_text_frame(frame, relay_url, owner_pid) do
     frame
     |> RelayMessage.parse()
     |> handle_message(relay_url, owner_pid)
   end
 
-  defp handle_message({:event, subscription_id, event}, _relay_url, _owner_pid) do
+  defp handle_message({:event, subscription_id, _} = event, _relay_url, _owner_pid) do
     sub_id_atom = String.to_atom(subscription_id)
-    Phoenix.PubSub.broadcast(@pubsub, "events:" <> sub_id_atom, event)
+    Registry.dispatch(Registry.PubSub, sub_id_atom, fn entries ->
+      for {pid, _} <- entries, do: send(pid, event)
+    end)
   end
 
   defp handle_message({:notice, message}, relay_url, owner_pid) do
@@ -24,12 +24,15 @@ defmodule Nostr.Relay.Socket.FrameHandler do
 
   defp handle_message(
          {:end_of_stored_events, subscription_id},
-         relay_url
+         relay_url,
+         _owner_pid
        ) do
     message = {:end_of_stored_events, relay_url, subscription_id}
 
     sub_id = String.to_atom(subscription_id)
-    Phoenix.PubSub.broadcast(@pubsub, "events:" <> sub_id, message)
+    Registry.dispatch(Registry.PubSub, sub_id, fn entries ->
+      for {pid, _} <- entries, do: send(pid, message)
+    end)
   end
 
   defp handle_message({:ok, event_id, success?, message}, relay_url, owner_pid) do
