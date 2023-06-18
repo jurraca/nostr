@@ -85,14 +85,14 @@ defmodule Nostr.Client.Request do
   defp filter_by_kind(kind, pubkeys, limit) do
     %Filter{
       kinds: [kind],
-      p: hexify(pubkeys),
+      p: pubkeys,
       limit: limit
     }
   end
 
   defp filter_by_ids(ids, kind, limit) do
     %Filter{
-      ids: hexify(ids),
+      ids: ids,
       kinds: [kind],
       limit: limit
     }
@@ -100,7 +100,7 @@ defmodule Nostr.Client.Request do
 
   defp filter_by_authors(pubkeys, kinds, limit) when is_integer(limit) do
     %Filter{
-      authors: hexify(pubkeys),
+      authors: pubkeys,
       kinds: kinds,
       since: since(@default_since),
       limit: limit
@@ -109,7 +109,7 @@ defmodule Nostr.Client.Request do
 
   defp filter_by_authors(pubkeys, kinds, _) do
     %Filter{
-      authors: hexify(pubkeys),
+      authors: pubkeys,
       kinds: kinds
     }
   end
@@ -155,7 +155,7 @@ defmodule Nostr.Client.Request do
 
   # a filter should always have kinds, since, and limit
   # validate values for all three, if all true, serialize
-  defp validate_filter(%{kinds: k, since: s, limit: l} = filter) do
+  defp validate_filter(%{kinds: k, since: _s, limit: l} = filter) do
     case [Enum.count(k) > 0, is_integer(l)]
     |> Enum.all?(&(&1)) do
       true -> Serializer.to_req(filter)
