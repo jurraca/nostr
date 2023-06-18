@@ -26,9 +26,7 @@ defmodule Nostr.Relay.Socket.Server do
 
   @impl true
   def handle_cast({:unsubscribe, subscription_id}, state) do
-    state =
-      state
-      |> Sender.send_close_message(subscription_id)
+    state = Sender.send_close_message(state, subscription_id)
 
     {:noreply, state}
   end
@@ -37,9 +35,7 @@ defmodule Nostr.Relay.Socket.Server do
   def handle_cast({:send_event, event}, state) do
     json_request = SendRequest.event(event)
 
-    state =
-      state
-      |> Sender.send_text(json_request)
+    state = Sender.send_text(state, json_request)
 
     {:noreply, state}
   end

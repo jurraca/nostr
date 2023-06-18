@@ -103,7 +103,7 @@ defmodule Nostr.Relay.Socket do
     GenServer.call(relay_pid, {:notes, pubkeys, limit, caller})
   end
 
-  @spec subscribe_deletions(pid(), list(<<_::256>>), integer()) :: atom()
+  @spec subscribe_deletions(pid(), pid(), list(<<_::256>>), integer()) :: atom()
   def subscribe_deletions(caller, relay_pid, pubkeys, limit \\ 10) when is_list(pubkeys) do
     GenServer.call(relay_pid, {:deletions, pubkeys, limit, caller})
   end

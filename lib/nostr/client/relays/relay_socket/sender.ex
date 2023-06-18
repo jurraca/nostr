@@ -92,11 +92,12 @@ defmodule Nostr.Relay.Socket.Sender do
   end
 
   defp add_subscription(state, atom_subscription_id) do
+    Logger.info("Adding subscription to state")
     %{state | subscriptions: [atom_subscription_id] ++ state.subscriptions}
   end
 
   defp remove_subscription(%{subscriptions: subscriptions} = state, atom_subscription_id) do
-    new_subscriptions = subscriptions |> Keyword.delete(atom_subscription_id)
+    new_subscriptions = subscriptions |> List.delete(atom_subscription_id)
 
     %{state | subscriptions: new_subscriptions}
   end

@@ -35,6 +35,10 @@ defmodule Nostr.Relay.RelayManager do
     |> Enum.uniq()
   end
 
+  def get_active_subscriptions_by_relay() do
+    active_pids() |> Enum.map(fn pid -> {pid, Socket.subscriptions(pid)} end)
+  end
+
   defp get_pid({:undefined, pid, :worker, [Socket]}), do: pid
 
   defp relay_socket_ready?(pid) do
