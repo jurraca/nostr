@@ -3,8 +3,6 @@ defmodule Nostr.Client do
   Connects to a relay through websockets
   """
 
-  use GenServer
-
   require Logger
 
   alias NostrBasics.Event
@@ -38,9 +36,12 @@ defmodule Nostr.Client do
   end
 
   def load_configuration(%{relays: relays, filters: filters}) do
-    with {:ok, _} <- add_relays(relays),
-      {:ok, sub_ids} <- subscribe(filters) do
+    relays = add_relays(relays)
+    case subscribe(filters, relays) do
+      {:ok, sub_ids} ->
+        Logger.info("Loaded configuration relays and subscription IDs.")
         {:ok, sub_ids}
+      {:error, _} = err -> err
     end
   end
 
@@ -56,46 +57,63 @@ defmodule Nostr.Client do
     end
   end
 
+  # Connect to relays, only return successfully started PIDs.
   def add_relays(relays) when is_list(relays) do
-    results = async_map(relays, &add_relay/1)
-    with true <- Enum.all?(results, fn x -> {:ok, _pid} = x end) do
-      {:ok, Enum.map(results, fn {:ok, pid} -> pid end)}
-    else
-      false -> {:error, results}
-    end
+    relays
+      |> Enum.map(&add_relay/1)
+      |> Enum.map(fn
+        {:ok, pid} -> pid
+        {:error, msg} ->
+          Logger.error(msg)
+          false
+        _ -> false
+      end)
+      |> Enum.filter(&(&1))
   end
 
-  # Single filter, default to all active relays
-  def subscribe({_req_id, _filter} = req) do
-    relays = Nostr.Relay.RelayManager.active_pids()
-    subscribe(req, relays)
-  end
-
-  # Single filter, subscribe to all relays
-  # Socket.subscribe is a genserver cast, so we don't wait for an answer
-  def subscribe({req_id, filter}, relays) when is_binary(filter) do
-    Enum.map(relays, &Socket.subscribe(&1, req_id, filter))
-    {:ok, req_id}
-  end
+  def subscribe(filters, relays, acc \\ [])
 
   # Multiple filters
-  def subscribe([head | tail], acc \\ []) do
+  def subscribe([head | tail], relays, acc) do
     case request_from_filter(head) do
-      {:ok, req} -> subscribe(tail, [req] ++ acc)
-      {:error, _} -> subscribe(tail, acc)
+      {:ok, req} -> subscribe(tail, relays, [req] ++ acc)
+      {:error, _} = err -> err
     end
   end
 
   # finish tail recursion, subscribe the individual {id, filter} tuples
   # and return ids, deduplicated.
-  def subscribe([], filters) do
-    sub_ids = Enum.map(filters, fn req ->
-      {:ok, req_id} = subscribe(req)
-      req_id
-    end)
-    |> Enum.uniq()
+  def subscribe([], relays, acc) do
+    sub_ids = acc
+      |> Enum.map(&subscribe_filter(&1, relays))
+      |> Enum.map(fn
+        {:ok, req_id} -> req_id
+        {:error, msg} ->
+            Logger.error(msg)
+            false
+      end)
+      |> Enum.filter(&(&1))
+      |> Enum.uniq()
 
     {:ok, sub_ids}
+  end
+
+  # Single filter, default to all active relays
+  def subscribe_filter({_req_id, _filter} = req) do
+    relays = Nostr.Relay.RelayManager.active_pids()
+    subscribe_filter(req, relays)
+  end
+
+  # Single filter, subscribe to all relays
+  # Socket.subscribe is a genserver cast, so we don't wait for an answer
+  def subscribe_filter({_req_id, filter}, []) when is_binary(filter) do
+    {:error, "Relays list is empty: no relays to subscribe to."}
+  end
+
+  def subscribe_filter({req_id, filter}, relays) when is_binary(filter) do
+    Logger.info("Subscribing with #{Enum.count(relays)} relays for filter #{filter}")
+    Enum.map(relays, &Socket.subscribe(&1, req_id, filter))
+    {:ok, req_id}
   end
 
   def request_from_filter(filter) do
@@ -104,7 +122,7 @@ defmodule Nostr.Client do
     rescue
       _ -> {:error, "Creating Request for filter id #{filter.id} failed."}
     catch
-      {req_id, encoded_filter} -> subscribe({req_id, encoded_filter})
+      {req_id, encoded_filter} -> subscribe_filter({req_id, encoded_filter})
     end
   end
 
@@ -332,8 +350,13 @@ defmodule Nostr.Client do
   end
 
   def unsubscribe(pid) do
-    DynamicSupervisor.terminate_child(Nostr.Subscriptions, pid)
-    #    GenServer.call(pid, {:terminate, :shutdown})
+    pid
+    |> Socket.subscriptions()
+    |> Enum.map(&Socket.unsubscribe(pid, &1))
+  end
+
+  def unsubscribe_all() do
+    RelayManager.active_pids() |> Enum.map(&unsubscribe/1)
   end
 
   @doc """
