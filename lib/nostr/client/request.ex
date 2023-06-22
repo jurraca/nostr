@@ -26,7 +26,7 @@ defmodule Nostr.Client.Request do
     get_by_authors([], [@recommended_servers_kind], nil)
   end
 
-  def contacts(pubkey, limit) do
+  def contacts(pubkey, limit \\ 100) do
     get_by_authors([pubkey], [@contacts_kind], limit)
   end
 

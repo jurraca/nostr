@@ -13,25 +13,9 @@ defmodule Nostr.Client do
   alias Nostr.Client.Tasks
   alias Nostr.Client.Request
 
-  alias Registry.PubSub
+  alias Nostr.Client.Send
 
-  alias Nostr.Client.Subscriptions.{
-    RepostsSubscription,
-    ReactionsSubscription,
-    TimelineSubscription,
-    EncryptedDirectMessagesSubscription
-  }
-
-  alias Nostr.Client.Workflows.{
-    Follow,
-    Unfollow,
-    DeleteEvents,
-    SendReaction,
-    SendRepost,
-    UpdateProfile
-  }
-
-  def load_configuration(%{relays: relays, filters: []}) do
+  def load_configuration(%{relays: _, filters: []}) do
     {:error, "No filters provided. Please create a filter before connecting to relays."}
   end
 
@@ -136,32 +120,21 @@ defmodule Nostr.Client do
     |> List.flatten()
   end
 
-  @impl true
-  def handle_info({:event, _sub_id, %NostrBasics.Event{}} = event, %{pubsub: pubsub} = state) do
-    {:noreply, state}
-  end
-
-  @impl true
-  def handle_info(msg, state) do
-    IO.inspect(msg, label: "client info msg")
-    {:noreply, state}
-  end
-
   def subscribe_all(), do: subscribe_all(RelayManager.active_pids())
 
-  def subscribe_all(relays), do: subscribe(Request.all(), relays)
+  def subscribe_all(relays), do: subscribe_filter(Request.all(), relays)
 
   @doc """
   Get an author's profile
   Takes an npub.
   """
-  def subscribe_profile(pubkey), do: subscribe(RelayManager.active_pids(), pubkey)
+  def subscribe_profile(pubkey), do: subscribe_profile(RelayManager.active_pids(), pubkey)
 
   @spec subscribe_profile(List.t(), PublicKey.id()) :: List.t() | {:error, String.t()}
   def subscribe_profile(relays, pubkey) when is_list(relays) do
     case PublicKey.to_binary(pubkey) do
       {:ok, binary_pubkey} ->
-        Enum.map(relays, &subscribe(Request.profile(binary_pubkey), &1))
+        Enum.map(relays, &subscribe_filter(Request.profile(binary_pubkey), &1))
 
       {:error, message} ->
         {:error, message}
@@ -175,16 +148,15 @@ defmodule Nostr.Client do
 
   @spec subscribe_recommended_servers() :: List.t()
   def subscribe_recommended_servers(relays) do
-    Enum.map(relays, &subscribe(Request.recommended_servers(), &1))
+    Enum.map(relays, &subscribe_filter(Request.recommended_servers(), &1))
   end
 
   @doc """
   Update the profile that's linked to the private key
   """
-  @spec update_profile(Profile.t(), PrivateKey.id()) :: GenServer.on_start()
+  @spec update_profile(Profile.t(), PrivateKey.id()) :: :ok
   def update_profile(%Profile{} = profile, privkey) do
-    RelayManager.active_pids()
-    |> UpdateProfile.start_link(profile, privkey)
+    Send.update_profile(profile, privkey, RelayManager.active_pids())
   end
 
   @doc """
@@ -194,7 +166,7 @@ defmodule Nostr.Client do
   def subscribe_contacts(relays, pubkey) do
     case PublicKey.to_binary(pubkey) do
       {:ok, binary_pubkey} ->
-        Enum.map(relays, &Socket.subscribe_contacts(__MODULE__, &1, binary_pubkey))
+        Enum.map(relays, &subscribe_filter(Request.contacts(binary_pubkey), &1))
 
       {:error, message} ->
         {:error, message}
@@ -204,14 +176,14 @@ defmodule Nostr.Client do
   @doc """
   Follow a new contact using either a binary public key or a npub
   """
-  @spec follow(PublicKey.id(), PrivateKey.id()) ::
+  @spec follow(PublicKey.id(), List.t(), PrivateKey.id()) ::
           {:ok, GenServer.on_start()} | {:error, binary()}
-  def follow(pubkey, privkey) do
+  def follow(pubkey, contact_list, privkey) do
     with {:ok, binary_privkey} <- PrivateKey.to_binary(privkey),
          {:ok, binary_pubkey} <- PublicKey.to_binary(pubkey) do
       {
         :ok,
-        Follow.start_link(RelayManager.active_pids(), binary_pubkey, binary_privkey)
+        Send.follow(binary_pubkey, binary_privkey, contact_list, RelayManager.active_pids())
       }
     else
       {:error, message} -> {:error, message}
@@ -221,14 +193,14 @@ defmodule Nostr.Client do
   @doc """
   Unfollow from a contact
   """
-  @spec unfollow(PublicKey.id(), PrivateKey.id()) ::
+  @spec unfollow(PublicKey.id(), List.t(), PrivateKey.id()) ::
           {:ok, GenServer.on_start()} | {:error, binary()}
-  def unfollow(pubkey, privkey) do
+  def unfollow(pubkey, contact_list, privkey) do
     with {:ok, binary_privkey} <- PrivateKey.to_binary(privkey),
          {:ok, binary_pubkey} <- PublicKey.to_binary(pubkey) do
       {
         :ok,
-        Unfollow.start_link(RelayManager.active_pids(), binary_pubkey, binary_privkey)
+        Send.unfollow( binary_pubkey, binary_privkey, contact_list, RelayManager.active_pids())
       }
     else
       {:error, message} -> {:error, message}
@@ -274,7 +246,7 @@ defmodule Nostr.Client do
   def subscribe_note(relays, note_id) do
     case Event.Id.to_binary(note_id) do
       {:ok, binary_note_id} ->
-        Enum.map(relays, &Socket.subscribe_note(__MODULE__, &1, binary_note_id))
+        Enum.map(relays, &subscribe_filter(Request.note(binary_note_id), &1))
 
       {:error, message} ->
         {:error, message}
@@ -289,32 +261,27 @@ defmodule Nostr.Client do
   @spec subscribe_kinds(list(), list(integer())) ::
           List.t() | {:error, String.t()}
   def subscribe_kinds(relays, kinds) when is_list(kinds) do
-    Enum.map(relays, &subscribe(Request.kinds(kinds), &1))
+    Enum.map(relays, &subscribe_filter(Request.kinds(kinds), &1))
   end
 
   @doc """
   Get a list of author's notes
   """
-  @spec subscribe_notes(list() | String.t()) :: list()
+  @spec subscribe_notes(list() | String.t()) :: list() | {:error, String.t()}
   def subscribe_notes(pubkeys) when is_list(pubkeys) do
-    RelayManager.active_pids()
-    |> subscribe_notes(pubkeys)
+    RelayManager.active_pids() |> subscribe_notes(pubkeys)
   end
 
   def subscribe_notes(pubkey), do: subscribe_notes([pubkey])
 
-  @spec subscribe_notes(list() | String.t()) ::
-          list() | {:error, String.t()}
   def subscribe_notes(relays, pubkeys) when is_list(pubkeys) do
     case PublicKey.to_binary(pubkeys) do
       {:ok, binary_pub_keys} ->
-        async_map(relays, &subscribe(Request.notes(binary_pub_keys), &1))
+        Enum.map(relays, &subscribe_filter(Request.notes(binary_pub_keys), &1))
       {:error, message} ->
         {:error, message}
     end
   end
-
-  def subscribe_notes(relays, pubkey), do: subscribe_notes(relays, [pubkey])
 
   @doc """
   Sends a note to the relay
@@ -336,11 +303,11 @@ defmodule Nostr.Client do
          {:ok, binary_note_id} <- Event.Id.to_binary(note_id) do
       {
         :ok,
-        SendReaction.start_link(
-          RelayManager.active_pids(),
+        Send.reaction(
+          content,
           binary_note_id,
           binary_privkey,
-          content
+          RelayManager.active_pids()
         )
       }
     else
@@ -376,10 +343,5 @@ defmodule Nostr.Client do
       ## > #{content}
       ## from: #{NostrBasics.Keys.PublicKey.to_npub(pubkey)}
       """)
-  end
-
-  @spec generate_random_id(integer()) :: binary()
-  defp generate_random_id(size \\ 16) do
-    :crypto.strong_rand_bytes(size) |> Binary.to_hex()
   end
 end
