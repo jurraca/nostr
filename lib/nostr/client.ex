@@ -111,7 +111,7 @@ defmodule Nostr.Client do
   end
 
   def subscribe_filter({req_id, filter}, relays) when is_binary(filter) do
-    Logger.info("Subscribing with #{Enum.count(relays)} relays for filter #{filter}")
+    Logger.info("Subscribing to #{Enum.count(relays)} relays for filter #{filter}")
     Enum.map(relays, &Socket.subscribe(&1, req_id, filter))
     {:ok, req_id}
   end
@@ -138,7 +138,6 @@ defmodule Nostr.Client do
 
   @impl true
   def handle_info({:event, _sub_id, %NostrBasics.Event{}} = event, %{pubsub: pubsub} = state) do
-    #Registry.PubSub.dispatch(pubsub, "events:", event)
     {:noreply, state}
   end
 

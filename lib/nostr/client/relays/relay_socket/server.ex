@@ -179,6 +179,7 @@ defmodule Nostr.Relay.Socket.Server do
   def handle_info({:connect_to_relay, relay_url, owner_pid}, state) do
     case Connector.connect(relay_url) do
       {:ok, conn, ref} ->
+        Logger.info("Successful connection to #{relay_url}")
         Publisher.successful_connection(owner_pid, relay_url)
 
         {

@@ -4,6 +4,7 @@ defmodule Nostr.Relay.Socket.FrameHandler do
   """
 
   alias NostrBasics.RelayMessage
+  require Logger
 
   def handle_text_frame(frame, relay_url, owner_pid) do
     frame
@@ -12,14 +13,19 @@ defmodule Nostr.Relay.Socket.FrameHandler do
   end
 
   defp handle_message({:event, subscription_id, _} = event, _relay_url, _owner_pid) do
+    Logger.info("received event for sub_id #{String.to_atom(subscription_id)}")
     sub_id_atom = String.to_atom(subscription_id)
     Registry.dispatch(Registry.PubSub, sub_id_atom, fn entries ->
       for {pid, _} <- entries, do: send(pid, event)
     end)
   end
 
-  defp handle_message({:notice, message}, relay_url, owner_pid) do
-    send(owner_pid, {:console, :notice, %{url: relay_url, message: message}})
+  defp handle_message({:notice, message}, relay_url, _owner_pid) do
+    Logger.info("NOTICE from #{relay_url}: #{message}")
+    Registry.dispatch(Registry.PubSub, "notice", fn entries ->
+      for {pid, _} <- entries, do: send(pid, message)
+    end)
+#    send(owner_pid, {:console, :notice, %{url: relay_url, message: message}})
   end
 
   defp handle_message(
