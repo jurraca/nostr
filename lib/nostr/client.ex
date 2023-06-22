@@ -21,11 +21,14 @@ defmodule Nostr.Client do
 
   def load_configuration(%{relays: relays, filters: filters}) do
     relays = add_relays(relays)
+
     case subscribe(filters, relays) do
       {:ok, sub_ids} ->
         Logger.info("Loaded configuration relays and subscription IDs.")
         {:ok, sub_ids}
-      {:error, _} = err -> err
+
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -44,15 +47,19 @@ defmodule Nostr.Client do
   # Connect to relays, only return successfully started PIDs.
   def add_relays(relays) when is_list(relays) do
     relays
-      |> Enum.map(&add_relay/1)
-      |> Enum.map(fn
-        {:ok, pid} -> pid
-        {:error, msg} ->
-          Logger.error(msg)
-          false
-        _ -> false
-      end)
-      |> Enum.filter(&(&1))
+    |> Enum.map(&add_relay/1)
+    |> Enum.map(fn
+      {:ok, pid} ->
+        pid
+
+      {:error, msg} ->
+        Logger.error(msg)
+        false
+
+      _ ->
+        false
+    end)
+    |> Enum.filter(& &1)
   end
 
   def subscribe(filters, relays, acc \\ [])
@@ -68,15 +75,18 @@ defmodule Nostr.Client do
   # finish tail recursion, subscribe the individual {id, filter} tuples
   # and return ids, deduplicated.
   def subscribe([], relays, acc) do
-    sub_ids = acc
+    sub_ids =
+      acc
       |> Enum.map(&subscribe_filter(&1, relays))
       |> Enum.map(fn
-        {:ok, req_id} -> req_id
+        {:ok, req_id} ->
+          req_id
+
         {:error, msg} ->
-            Logger.error(msg)
-            false
+          Logger.error(msg)
+          false
       end)
-      |> Enum.filter(&(&1))
+      |> Enum.filter(& &1)
       |> Enum.uniq()
 
     {:ok, sub_ids}
@@ -144,7 +154,8 @@ defmodule Nostr.Client do
   @doc """
   Get an author's recommended servers
   """
-  def subscribe_recommended_servers(), do: subscribe_recommended_servers(RelayManager.active_pids())
+  def subscribe_recommended_servers(),
+    do: subscribe_recommended_servers(RelayManager.active_pids())
 
   @spec subscribe_recommended_servers() :: List.t()
   def subscribe_recommended_servers(relays) do
@@ -200,7 +211,7 @@ defmodule Nostr.Client do
          {:ok, binary_pubkey} <- PublicKey.to_binary(pubkey) do
       {
         :ok,
-        Send.unfollow( binary_pubkey, binary_privkey, contact_list, RelayManager.active_pids())
+        Send.unfollow(binary_pubkey, binary_privkey, contact_list, RelayManager.active_pids())
       }
     else
       {:error, message} -> {:error, message}
@@ -278,6 +289,7 @@ defmodule Nostr.Client do
     case PublicKey.to_binary(pubkeys) do
       {:ok, binary_pub_keys} ->
         Enum.map(relays, &subscribe_filter(Request.notes(binary_pub_keys), &1))
+
       {:error, message} ->
         {:error, message}
     end
@@ -338,10 +350,10 @@ defmodule Nostr.Client do
 
   def print_to_console(%{id: id, created_at: created_at, content: content, pubkey: pubkey}) do
     IO.puts("""
-      ####### EVENT #{id}
-      ## seen at: #{created_at}
-      ## > #{content}
-      ## from: #{NostrBasics.Keys.PublicKey.to_npub(pubkey)}
-      """)
+    ####### EVENT #{id}
+    ## seen at: #{created_at}
+    ## > #{content}
+    ## from: #{NostrBasics.Keys.PublicKey.to_npub(pubkey)}
+    """)
   end
 end
