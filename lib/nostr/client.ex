@@ -259,9 +259,9 @@ defmodule Nostr.Client do
     end
   end
 
-  @doc """
-  Get encrypted direct messages from a private key
-  """
+#  @doc """
+#  Get encrypted direct messages from a private key
+#  """
 #  def encrypted_direct_messages(private_key) do
 #    @spec encrypted_direct_messages(PrivateKey.id()) :: DynamicSupervisor.on_start_child()
 #    case PrivateKey.to_binary(private_key) do
