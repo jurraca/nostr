@@ -4,7 +4,7 @@ defmodule Nostr.Client.Send do
   alias NostrBasics.Event
   alias NostrBasics.Event.{Signer, Validator}
   alias NostrBasics.Keys.PublicKey
-  alias NostrBasics.Models.{ContactList, Profile, Reaction}
+  alias NostrBasics.Models.{ContactList, Note, Profile, Reaction}
 
   alias Nostr.Relay.Socket
 
@@ -26,17 +26,45 @@ defmodule Nostr.Client.Send do
     for relay_pid <- relay_pids do
       Socket.send_event(relay_pid, validated_event)
     end
+    :ok
+  end
+
+  @doc """
+  Sends a note via a list of relays
+
+  ## Examples
+      iex> private_key = <<0x4E22DA43418DD934373CBB38A5AB13059191A2B3A51C5E0B67EB1334656943B8::256>>
+      ...> relay_pids = []
+      ...> "The Times 03/Jan/2009 Chancellor on brink of second bailout for banks"
+      ...> |> Nostr.Client.Tasks.SendNote.execute(private_key, relay_pids)
+      :ok
+  """
+  @spec note(String.t(), PrivateKey.id(), list()) :: :ok | {:error, String.t()}
+  def note(contents, private_key, relay_pids) do
+    with {:ok, pubkey} <- PublicKey.from_private_key(private_key),
+         {:ok, event} <- create_note_event(contents, pubkey),
+         {:ok, signed_event} <- prepare_and_sign_event(event, private_key) do
+      case Validator.validate_event(signed_event) do
+        :ok -> send_event(signed_event, relay_pids)
+        {:error, _} = err -> err
+      end
+    else
+      {:error, message} -> {:error, message}
+    end
+  end
+
+  def create_note_event(contents, private_key) do
+    Note.to_event(%Note{content: contents}, private_key)
   end
 
   def update_profile(%Profile{} = new_profile, private_key, relay_pids) do
     with {:ok, pubkey} <- PublicKey.from_private_key(private_key),
          {:ok, profile_event} <- create_profile_event(new_profile, pubkey),
          {:ok, signed_event} <- prepare_and_sign_event(profile_event, private_key) do
-      :ok = Validator.validate_event(signed_event)
-
-      send_event(signed_event, relay_pids)
-
-      :ok
+      case Validator.validate_event(signed_event) do
+        :ok -> send_event(signed_event, relay_pids)
+        {:error, _} = err -> err
+      end
     else
       {:error, message} -> {:error, message}
     end
@@ -47,20 +75,22 @@ defmodule Nostr.Client.Send do
   end
 
   def reaction(event, privkey, content, relay_pids) do
-    pubkey = PublicKey.from_private_key!(privkey)
-
-    {:ok, reaction_event} =
-      %Reaction{event_id: event.id, event_pubkey: event.pubkey}
-      |> Reaction.to_event(pubkey)
-
-    {:ok, signed_event} =
-      %Event{reaction_event | content: content, created_at: DateTime.utc_now()}
-      |> Event.add_id()
-      |> Signer.sign_event(privkey)
-
-    case Validator.validate_event(signed_event) do
-      :ok -> send_event(signed_event, relay_pids)
-      {:error, _} = err -> err
+    with {:ok, pubkey} <- PublicKey.from_private_key(privkey),
+         {:ok, reaction_event} <-
+           Reaction.to_event(
+             %Reaction{event_id: event.id, event_pubkey: event.pubkey},
+             pubkey
+           ),
+         {:ok, signed_event} <-
+           %Event{reaction_event | content: content, created_at: DateTime.utc_now()}
+           |> Event.add_id()
+           |> Signer.sign_event(privkey) do
+      case Validator.validate_event(signed_event) do
+        :ok -> send_event(signed_event, relay_pids)
+        {:error, _} = err -> err
+      end
+    else
+      {:error, message} -> {:error, message}
     end
   end
 
@@ -81,18 +111,18 @@ defmodule Nostr.Client.Send do
   end
 
   def unfollow(unfollow_pubkey, privkey, contact_list, relay_pids) do
-    contact_list =
-      ContactList.remove(contact_list, unfollow_pubkey)
-      |> ContactList.to_event()
-
-    {:ok, signed_event} =
-      %Event{contact_list | created_at: DateTime.utc_now()}
-      |> Event.add_id()
-      |> Signer.sign_event(privkey)
-
+    with contact_list <-
+           ContactList.remove(contact_list, unfollow_pubkey) |> ContactList.to_event(),
+         {:ok, signed_event} <-
+           %Event{contact_list | created_at: DateTime.utc_now()}
+           |> Event.add_id()
+           |> Signer.sign_event(privkey) do
       case Validator.validate_event(signed_event) do
         :ok -> send_event(signed_event, relay_pids)
         {:error, _} = err -> err
       end
+    else
+      {:error, message} -> {:error, message}
+    end
   end
 end

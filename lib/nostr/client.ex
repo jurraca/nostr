@@ -6,13 +6,13 @@ defmodule Nostr.Client do
 
   require Logger
 
+  alias Nostr.Client.EncryptedDM
   alias NostrBasics.Event
   alias NostrBasics.Keys.{PublicKey, PrivateKey}
   alias NostrBasics.Models.{Profile, Note}
 
-  alias Nostr.Client.{Request, Send, Tasks}
+  alias Nostr.Client.{Request, Send, EncryptedDM}
   alias Nostr.Relay.{RelayManager, Socket}
-
 
   @doc """
   Load relays and filters.
@@ -73,14 +73,12 @@ defmodule Nostr.Client do
     |> Enum.filter(& &1)
   end
 
-
   @doc """
   Subscribe to multiple filters and relays.
   Useful to load an existing  Nostr profile.
   Subscriptions are "fire and forget", so we return subscription IDs in order for the client to subscribe to them.
   """
   def subscribe(filters, relays, acc \\ [])
-
 
   def subscribe([head | tail], relays, acc) do
     case request_from_filter(head) do
@@ -127,8 +125,14 @@ defmodule Nostr.Client do
 
   def subscribe_filter({req_id, filter}, relays) when is_binary(filter) do
     Logger.info("Subscribing to #{Enum.count(relays)} relays for filter #{filter}")
-    Enum.map(relays, &Socket.subscribe(&1, req_id, filter))
-    {:ok, req_id}
+
+    case relays |> Enum.map(&Socket.subscribe(&1, req_id, filter)) |> Enum.all?() do
+      true ->
+        {:ok, req_id}
+
+      false ->
+        {:error, "Not all subscriptions were successful for req_id#{Atom.to_string(req_id)}"}
+    end
   end
 
   @doc """
@@ -202,7 +206,7 @@ defmodule Nostr.Client do
   @doc """
   Update the profile that's linked to the private key
   """
-  @spec update_profile(Profile.t(), PrivateKey.id()) :: :ok
+  @spec update_profile(Profile.t(), PrivateKey.id()) :: :ok | {:error, String.t()}
   def update_profile(%Profile{} = profile, privkey) do
     Send.update_profile(profile, privkey, RelayManager.active_pids())
   end
@@ -281,7 +285,7 @@ defmodule Nostr.Client do
   def send_encrypted_direct_messages(remote_pubkey, message, private_key) do
     relay_pids = RelayManager.active_pids()
 
-    Tasks.SendEncryptedDirectMessage.execute(message, remote_pubkey, private_key, relay_pids)
+    EncryptedDM.send(message, remote_pubkey, private_key, relay_pids)
   end
 
   @doc """
@@ -337,7 +341,7 @@ defmodule Nostr.Client do
   """
   @spec send_note(String.t(), PrivateKey.id()) :: :ok | {:error, String.t()}
   def send_note(note, privkey, relay_pids) do
-    Tasks.SendNote.execute(note, privkey, relay_pids)
+    Send.note(note, privkey, relay_pids)
   end
 
   def send_note(note, privkey) do
