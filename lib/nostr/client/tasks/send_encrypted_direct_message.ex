@@ -1,4 +1,4 @@
-defmodule Nostr.Client.Tasks.SendEncryptedDirectMessage do
+defmodule Nostr.Client.EncryptedDM do
   @moduledoc """
   Encrypt and send a direct message
   """
@@ -8,7 +8,7 @@ defmodule Nostr.Client.Tasks.SendEncryptedDirectMessage do
   alias NostrBasics.Event.{Signer, Validator}
   alias NostrBasics.Models.EncryptedDirectMessage
 
-  alias Nostr.Client.Relays.RelaySocket
+  alias Nostr.Client.Relay.Socket
 
   @doc """
   Encrypt and send a direct message
@@ -21,8 +21,8 @@ defmodule Nostr.Client.Tasks.SendEncryptedDirectMessage do
       ...> |> Nostr.Client.Tasks.SendEncryptedDirectMessage.execute(remote_pubkey, private_key, relay_pids)
       :ok
   """
-  @spec execute(String.t(), PublicKey.id(), PrivateKey.id(), list()) :: :ok | {:error, String.t()}
-  def execute(contents, remote_pubkey, private_key, relay_pids) do
+  @spec send(String.t(), PublicKey.id(), PrivateKey.id(), list()) :: :ok | {:error, String.t()}
+  def send(contents, remote_pubkey, private_key, relay_pids) do
     with {:ok, dm_event} <- create_dm_event(contents, remote_pubkey, private_key),
          {:ok, signed_event} <- prepare_and_sign_event(dm_event, private_key) do
       :ok = Validator.validate_event(signed_event)
@@ -48,7 +48,7 @@ defmodule Nostr.Client.Tasks.SendEncryptedDirectMessage do
 
   defp send_event(validated_event, relay_pids) do
     for relay_pid <- relay_pids do
-      RelaySocket.send_event(relay_pid, validated_event)
+      Socket.send_event(relay_pid, validated_event)
     end
   end
 end
