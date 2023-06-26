@@ -1,6 +1,8 @@
 defmodule Nostr.Client.Request do
   @moduledoc """
-  Transforms simple functions into JSON requests that relays can interpret
+  Creates Nostr REQ events, i.e. subscription filters.
+  The main builder is the `Request.new/1` function, which returns a tuple `{subscription_id, encoded_request}` for the client to send to relays, and subscribe to incoming events.
+  Request creation will either be correct or return an error.
   """
 
   alias NostrBasics.Filter

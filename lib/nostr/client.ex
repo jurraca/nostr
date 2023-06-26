@@ -1,6 +1,7 @@
 defmodule Nostr.Client do
   @moduledoc """
-  Connects to a relay through websockets
+  Implementation of a Nostr Client: subscribe to relays, modify subscriptions, send events.
+  The Client matches the publish-subscribe model which Nostr is built on. After creating a subscription via the Client.Request module and subscribing to one or multiple relays, incoming messages will be broadcast via the Registry.PubSub, where the subscription ID is the topic we broadcast on. Implementation of a listener is left to the user of the library--they are regular Elixir messages.
   """
 
   require Logger
@@ -9,12 +10,14 @@ defmodule Nostr.Client do
   alias NostrBasics.Keys.{PublicKey, PrivateKey}
   alias NostrBasics.Models.{Profile, Note}
 
+  alias Nostr.Client.{Request, Send, Tasks}
   alias Nostr.Relay.{RelayManager, Socket}
-  alias Nostr.Client.Tasks
-  alias Nostr.Client.Request
 
-  alias Nostr.Client.Send
 
+  @doc """
+  Load relays and filters.
+  We don't allow sub'ing to a relay without filters. Default to "all" if needed.
+  """
   def load_configuration(%{relays: _, filters: []}) do
     {:error, "No filters provided. Please create a filter before connecting to relays."}
   end
@@ -32,10 +35,16 @@ defmodule Nostr.Client do
     end
   end
 
+  @doc """
+  After creating a filter, Request.new/1 returns a subscription ID, which the client can use to subscribe to a topic.
+  """
   def subscribe_to_topic(pubsub, sub_id) do
     Registry.register(pubsub, sub_id, [])
   end
 
+  @doc """
+  Connect to a relay via its URL.
+  """
   def add_relay(relay_url) do
     case RelayManager.add(relay_url) do
       {:ok, _pid} = res -> res
@@ -44,7 +53,9 @@ defmodule Nostr.Client do
     end
   end
 
-  # Connect to relays, only return successfully started PIDs.
+  @doc """
+  Connect to multiple relays, only return successfully started PIDs.
+  """
   def add_relays(relays) when is_list(relays) do
     relays
     |> Enum.map(&add_relay/1)
@@ -62,9 +73,15 @@ defmodule Nostr.Client do
     |> Enum.filter(& &1)
   end
 
+
+  @doc """
+  Subscribe to multiple filters and relays.
+  Useful to load an existing  Nostr profile.
+  Subscriptions are "fire and forget", so we return subscription IDs in order for the client to subscribe to them.
+  """
   def subscribe(filters, relays, acc \\ [])
 
-  # Multiple filters
+
   def subscribe([head | tail], relays, acc) do
     case request_from_filter(head) do
       {:ok, req} -> subscribe(tail, relays, [req] ++ acc)
@@ -92,14 +109,18 @@ defmodule Nostr.Client do
     {:ok, sub_ids}
   end
 
-  # Single filter, default to all active relays
+  @doc """
+  Subscribe to a single filter, via all active relay PIDs.
+  """
   def subscribe_filter({_req_id, _filter} = req) do
     relays = Nostr.Relay.RelayManager.active_pids()
     subscribe_filter(req, relays)
   end
 
-  # Single filter, subscribe to all relays
-  # Socket.subscribe is a genserver cast, so we don't wait for an answer
+  @doc """
+  Subscribe to a filter via a specific set of relays.
+  Returns {:ok, sub_id} if successful.
+  """
   def subscribe_filter({_req_id, filter}, []) when is_binary(filter) do
     {:error, "Relays list is empty: no relays to subscribe to."}
   end
@@ -110,6 +131,10 @@ defmodule Nostr.Client do
     {:ok, req_id}
   end
 
+  @doc """
+  Pass an existing %Filter{} struct and create a Request out of it.
+  Returns {:ok, {sub_id, encoded_req}}
+  """
   def request_from_filter(filter) do
     try do
       {:ok, Request.new(filter)}
@@ -120,16 +145,28 @@ defmodule Nostr.Client do
     end
   end
 
+  @doc """
+  Get the subscriptions that a process is subscribed to.
+  Useful for seeing which subs a Client is currently listening to.
+  """
   def get_subscriptions(pid) do
     Registry.keys(Registry.PubSub, pid)
   end
 
+  @doc """
+  Get subscriptions for all active relays.
+  Each Relay GenServer maintains a state of its own subscriptions, and deletes them on unsubscribe.
+  Useful to know which relay has which subscriptions.
+  """
   def get_subscriptions_all() do
     RelayManager.active_pids()
     |> Enum.map(&get_subscriptions(&1))
     |> List.flatten()
   end
 
+  @doc """
+  Subscribe to all messages.
+  """
   def subscribe_all(), do: subscribe_all(RelayManager.active_pids())
 
   def subscribe_all(relays), do: subscribe_filter(Request.all(), relays)
@@ -308,6 +345,9 @@ defmodule Nostr.Client do
     send_note(note, privkey, relay_pids)
   end
 
+  @doc """
+  Send reaction to a given note.
+  """
   @spec react(Note.id(), PrivateKey.id(), String.t()) ::
           {:ok, GenServer.on_start()} | {:error, String.t()}
   def react(note_id, privkey, content \\ "+") do
@@ -327,12 +367,18 @@ defmodule Nostr.Client do
     end
   end
 
+  @doc """
+  Unsubscribe from all subscriptions on a given relay PID.
+  """
   def unsubscribe(pid) do
     pid
     |> Socket.subscriptions()
     |> Enum.map(&Socket.unsubscribe(pid, &1))
   end
 
+  @doc """
+  Unsubscribe from all subs on all relays. Does NOT close the websocket conn.
+  """
   def unsubscribe_all() do
     RelayManager.active_pids() |> Enum.map(&unsubscribe/1)
   end
