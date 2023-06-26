@@ -8,7 +8,7 @@ defmodule Nostr.Client.EncryptedDM do
   alias NostrBasics.Event.{Signer, Validator}
   alias NostrBasics.Models.EncryptedDirectMessage
 
-  alias Nostr.Client.Relay.Socket
+  alias Nostr.Relay.Socket
 
   @doc """
   Encrypt and send a direct message

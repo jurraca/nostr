@@ -1,4 +1,4 @@
-defmodule Nostr.Client.Tasks.SendNote do
+defmodule Nostr.Client.Note do
   @moduledoc """
   Sends a note
   """
@@ -20,8 +20,8 @@ defmodule Nostr.Client.Tasks.SendNote do
       ...> |> Nostr.Client.Tasks.SendNote.execute(private_key, relay_pids)
       :ok
   """
-  @spec execute(String.t(), PrivateKey.id(), list()) :: :ok | {:error, String.t()}
-  def execute(contents, private_key, relay_pids) do
+  @spec send(String.t(), PrivateKey.id(), list()) :: :ok | {:error, String.t()}
+  def send(contents, private_key, relay_pids) do
     with {:ok, pubkey} <- PublicKey.from_private_key(private_key),
          {:ok, event} <- create_note_event(contents, pubkey),
          {:ok, signed_event} <- prepare_and_sign_event(event, private_key) do
