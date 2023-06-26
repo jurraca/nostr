@@ -1,6 +1,6 @@
 defmodule Nostr.Relay.Socket.Server do
   @moduledoc """
-  The process handling all of the Socket commands
+  The GenServer implementation. Its state is the websocket state, as well as a list of subscriptions currently active on this relay.
   """
 
   use GenServer
@@ -9,7 +9,7 @@ defmodule Nostr.Relay.Socket.Server do
 
   alias Nostr.Relay.Socket
   alias Nostr.Relay.Socket.{Connector, MessageDispatcher, Publisher, Sender}
-  alias Nostr.Client.{SendRequest}
+  alias Nostr.Client.Request
 
   @impl true
   def init(%{relay_url: relay_url, owner_pid: owner_pid}) do
@@ -33,16 +33,14 @@ defmodule Nostr.Relay.Socket.Server do
 
   @impl true
   def handle_cast({:send_event, event}, state) do
-    json_request = SendRequest.event(event)
-
-    state = Sender.send_text(state, json_request)
+    state = Sender.send_text(state, event)
 
     {:noreply, state}
   end
 
   @impl true
   def handle_call({:all, limit}, _from, state) do
-    {subscription_id, json} = Nostr.Client.Request.all(limit)
+    {subscription_id, json} = Request.all(limit)
 
     send(self(), {:subscription_request, state, subscription_id, json})
 

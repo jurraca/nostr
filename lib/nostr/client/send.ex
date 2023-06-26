@@ -1,4 +1,7 @@
 defmodule Nostr.Client.Send do
+  @moduledoc """
+  Send events. Anything that's not a "REQ" probably goes here.
+  """
   require Logger
 
   alias NostrBasics.Event

@@ -1,6 +1,8 @@
 defmodule Nostr.Relay.RelayManager do
   @moduledoc """
-  Accepts a list of relays and makes sure they're connected to if available
+  A Dynamic Supervisor which supervises connections to relays.
+  This module provides a few functions to faciliate getting the status of individual websocket conns.
+  Accepts a list of relays and makes sure they're connected to if available.
   """
 
   use DynamicSupervisor

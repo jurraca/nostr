@@ -1,4 +1,8 @@
 defmodule Nostr.Relay.Socket do
+  @moduledoc """
+  The public facing API to our relay GenServer.
+  Initiates connections to relays via websocket and handles event sending and subscription.
+  """
   require Logger
 
   alias Nostr.Relay.Socket.Server
