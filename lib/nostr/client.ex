@@ -185,7 +185,7 @@ defmodule Nostr.Client do
   def subscribe_profile(relays, pubkey) when is_list(relays) do
     case PublicKey.to_binary(pubkey) do
       {:ok, binary_pubkey} ->
-        Enum.map(relays, &subscribe_filter(Request.profile(binary_pubkey), &1))
+        subscribe_filter(Request.profile(binary_pubkey), relays)
 
       {:error, message} ->
         {:error, message}
@@ -200,7 +200,7 @@ defmodule Nostr.Client do
 
   @spec subscribe_recommended_servers() :: List.t()
   def subscribe_recommended_servers(relays) do
-    Enum.map(relays, &subscribe_filter(Request.recommended_servers(), &1))
+    subscribe_filter(Request.recommended_servers(), relays)
   end
 
   @doc """
@@ -218,7 +218,7 @@ defmodule Nostr.Client do
   def subscribe_contacts(relays, pubkey) do
     case PublicKey.to_binary(pubkey) do
       {:ok, binary_pubkey} ->
-        Enum.map(relays, &subscribe_filter(Request.contacts(binary_pubkey), &1))
+        subscribe_filter(Request.contacts(binary_pubkey), relays)
 
       {:error, message} ->
         {:error, message}
@@ -262,20 +262,20 @@ defmodule Nostr.Client do
   @doc """
   Get encrypted direct messages from a private key
   """
-  @spec encrypted_direct_messages(PrivateKey.id()) :: DynamicSupervisor.on_start_child()
-  def encrypted_direct_messages(private_key) do
-    case PrivateKey.to_binary(private_key) do
-      {:ok, binary_private_key} ->
-        DynamicSupervisor.start_child(
-          Nostr.Subscriptions,
-          {EncryptedDirectMessagesSubscription,
-           [RelayManager.active_pids(), binary_private_key, self()]}
-        )
-
-      {:error, message} ->
-        {:error, message}
-    end
-  end
+#  def encrypted_direct_messages(private_key) do
+#    @spec encrypted_direct_messages(PrivateKey.id()) :: DynamicSupervisor.on_start_child()
+#    case PrivateKey.to_binary(private_key) do
+#      {:ok, binary_private_key} ->
+#        DynamicSupervisor.start_child(
+#          Nostr.Subscriptions,
+#          {EncryptedDirectMessagesSubscription,
+#           [RelayManager.active_pids(), binary_private_key, self()]}
+#        )
+#
+#      {:error, message} ->
+#        {:error, message}
+#    end
+#  end
 
   @doc """
   Sends an encrypted direct message
@@ -285,6 +285,12 @@ defmodule Nostr.Client do
   def send_encrypted_direct_messages(remote_pubkey, message, private_key) do
     relay_pids = RelayManager.active_pids()
 
+    send_encrypted_direct_messages(message, remote_pubkey, private_key, relay_pids)
+  end
+
+  @spec send_encrypted_direct_messages(PublicKey.id(), String.t(), PrivateKey.id(), List.t()) ::
+  :ok | {:error, String.t()}
+  def send_encrypted_direct_messages(remote_pubkey, message, private_key, relay_pids) do
     EncryptedDM.send(message, remote_pubkey, private_key, relay_pids)
   end
 
@@ -298,7 +304,7 @@ defmodule Nostr.Client do
   def subscribe_note(relays, note_id) do
     case Event.Id.to_binary(note_id) do
       {:ok, binary_note_id} ->
-        Enum.map(relays, &subscribe_filter(Request.note(binary_note_id), &1))
+        subscribe_filter(Request.note(binary_note_id), relays)
 
       {:error, message} ->
         {:error, message}
@@ -313,7 +319,7 @@ defmodule Nostr.Client do
   @spec subscribe_kinds(list(), list(integer())) ::
           List.t() | {:error, String.t()}
   def subscribe_kinds(relays, kinds) when is_list(kinds) do
-    Enum.map(relays, &subscribe_filter(Request.kinds(kinds), &1))
+    subscribe_filter(Request.kinds(kinds), relays)
   end
 
   @doc """
@@ -329,7 +335,7 @@ defmodule Nostr.Client do
   def subscribe_notes(relays, pubkeys) when is_list(pubkeys) do
     case PublicKey.to_binary(pubkeys) do
       {:ok, binary_pub_keys} ->
-        Enum.map(relays, &subscribe_filter(Request.notes(binary_pub_keys), &1))
+        subscribe_filter(Request.notes(binary_pub_keys), relays)
 
       {:error, message} ->
         {:error, message}
