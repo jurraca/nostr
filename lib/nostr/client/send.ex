@@ -8,6 +8,14 @@ defmodule Nostr.Client.Send do
 
   alias Nostr.Relay.Socket
 
+  def format_event(signed_event) do
+    Jason.encode(["EVENT", signed_event])
+  end
+
+  def close(subscription_id) do
+    Jason.encode(["CLOSE", subscription_id])
+  end
+
   def prepare_and_sign_event(event, private_key) do
     %Event{event | created_at: DateTime.utc_now()}
     |> Event.add_id()
