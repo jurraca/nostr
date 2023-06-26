@@ -116,10 +116,10 @@ defmodule Nostr.Relay.Socket.Server do
     {:noreply, state}
   end
 
-  #@impl true
-  #def handle_info({:DOWN, _ref, :process, pid, reason}, state) do
+  # @impl true
+  # def handle_info({:DOWN, _ref, :process, pid, reason}, state) do
   #  {:noreply, state}
-  #end
+  # end
 
   @impl true
   def handle_info({:console, :ping, _url}, state) do

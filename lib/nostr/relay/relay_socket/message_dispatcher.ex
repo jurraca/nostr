@@ -12,8 +12,9 @@ defmodule Nostr.Relay.Socket.MessageDispatcher do
     case WebSocket.stream(conn, message) do
       {:ok, conn, responses} ->
         state = put_in(state.conn, conn) |> handle_responses(responses)
+
         if state.closing? do
-         do_close(state)
+          do_close(state)
         else
           {:noreply, state}
         end

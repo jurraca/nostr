@@ -15,6 +15,7 @@ defmodule Nostr.Relay.Socket.FrameHandler do
   defp handle_message({:event, subscription_id, _} = event, _relay_url, _owner_pid) do
     Logger.info("received event for sub_id #{String.to_atom(subscription_id)}")
     sub_id_atom = String.to_atom(subscription_id)
+
     Registry.dispatch(Registry.PubSub, sub_id_atom, fn entries ->
       for {pid, _} <- entries, do: send(pid, event)
     end)
@@ -22,10 +23,12 @@ defmodule Nostr.Relay.Socket.FrameHandler do
 
   defp handle_message({:notice, message}, relay_url, _owner_pid) do
     Logger.info("NOTICE from #{relay_url}: #{message}")
+
     Registry.dispatch(Registry.PubSub, "notice", fn entries ->
       for {pid, _} <- entries, do: send(pid, message)
     end)
-#    send(owner_pid, {:console, :notice, %{url: relay_url, message: message}})
+
+    #    send(owner_pid, {:console, :notice, %{url: relay_url, message: message}})
   end
 
   defp handle_message(
@@ -36,6 +39,7 @@ defmodule Nostr.Relay.Socket.FrameHandler do
     message = {:end_of_stored_events, relay_url, subscription_id}
 
     sub_id = String.to_atom(subscription_id)
+
     Registry.dispatch(Registry.PubSub, sub_id, fn entries ->
       for {pid, _} <- entries, do: send(pid, message)
     end)

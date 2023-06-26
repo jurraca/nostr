@@ -66,7 +66,7 @@ defmodule Nostr.Client.Send do
     with {:ok, pubkey} <- PublicKey.from_private_key(private_key),
          {:ok, profile_event} <- create_profile_event(new_profile, pubkey),
          {:ok, signed_event} <- prepare_and_sign_event(profile_event, private_key) do
-          validate_and_send(signed_event, relay_pids)
+      validate_and_send(signed_event, relay_pids)
     else
       {:error, message} -> {:error, message}
     end
@@ -83,7 +83,7 @@ defmodule Nostr.Client.Send do
            %Event{reaction_event | content: content, created_at: DateTime.utc_now()}
            |> Event.add_id()
            |> Signer.sign_event(privkey) do
-            validate_and_send(signed_event, relay_pids)
+      validate_and_send(signed_event, relay_pids)
     else
       {:error, message} -> {:error, message}
     end
@@ -95,7 +95,7 @@ defmodule Nostr.Client.Send do
            %Repost{event: event, relays: [found_on_relay]}
            |> Repost.to_event(pubkey),
          {:ok, signed_event} <- prepare_and_sign_event(repost, privkey) do
-          validate_and_send(signed_event, relay_pids)
+      validate_and_send(signed_event, relay_pids)
     else
       {:error, message} -> {:error, message}
     end
@@ -111,7 +111,7 @@ defmodule Nostr.Client.Send do
       |> Event.add_id()
       |> Signer.sign_event(privkey)
 
-      validate_and_send(signed_event, relay_pids)
+    validate_and_send(signed_event, relay_pids)
   end
 
   def unfollow(unfollow_pubkey, privkey, contact_list, relay_pids) do
@@ -121,7 +121,7 @@ defmodule Nostr.Client.Send do
            %Event{contact_list | created_at: DateTime.utc_now()}
            |> Event.add_id()
            |> Signer.sign_event(privkey) do
-        validate_and_send(signed_event, relay_pids)
+      validate_and_send(signed_event, relay_pids)
     else
       {:error, message} -> {:error, message}
     end

@@ -259,23 +259,23 @@ defmodule Nostr.Client do
     end
   end
 
-#  @doc """
-#  Get encrypted direct messages from a private key
-#  """
-#  def encrypted_direct_messages(private_key) do
-#    @spec encrypted_direct_messages(PrivateKey.id()) :: DynamicSupervisor.on_start_child()
-#    case PrivateKey.to_binary(private_key) do
-#      {:ok, binary_private_key} ->
-#        DynamicSupervisor.start_child(
-#          Nostr.Subscriptions,
-#          {EncryptedDirectMessagesSubscription,
-#           [RelayManager.active_pids(), binary_private_key, self()]}
-#        )
-#
-#      {:error, message} ->
-#        {:error, message}
-#    end
-#  end
+  #  @doc """
+  #  Get encrypted direct messages from a private key
+  #  """
+  #  def encrypted_direct_messages(private_key) do
+  #    @spec encrypted_direct_messages(PrivateKey.id()) :: DynamicSupervisor.on_start_child()
+  #    case PrivateKey.to_binary(private_key) do
+  #      {:ok, binary_private_key} ->
+  #        DynamicSupervisor.start_child(
+  #          Nostr.Subscriptions,
+  #          {EncryptedDirectMessagesSubscription,
+  #           [RelayManager.active_pids(), binary_private_key, self()]}
+  #        )
+  #
+  #      {:error, message} ->
+  #        {:error, message}
+  #    end
+  #  end
 
   @doc """
   Sends an encrypted direct message
@@ -289,7 +289,7 @@ defmodule Nostr.Client do
   end
 
   @spec send_encrypted_direct_messages(PublicKey.id(), String.t(), PrivateKey.id(), List.t()) ::
-  :ok | {:error, String.t()}
+          :ok | {:error, String.t()}
   def send_encrypted_direct_messages(remote_pubkey, message, private_key, relay_pids) do
     EncryptedDM.send(message, remote_pubkey, private_key, relay_pids)
   end

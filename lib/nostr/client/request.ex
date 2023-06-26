@@ -9,7 +9,8 @@ defmodule Nostr.Client.Request do
   alias NostrBasics.Filter.Serializer
 
   @default_id_size 16
-  @default_since 36 # hours back for messages
+  # hours back for messages
+  @default_since 36
 
   @metadata_kind 0
   @text_kind 1
@@ -152,14 +153,14 @@ defmodule Nostr.Client.Request do
   end
 
   defp since(hours) when is_integer(hours) do
-    DateTime.from_unix!(DateTime.to_unix(DateTime.utc_now()) - (3600 * hours))
+    DateTime.from_unix!(DateTime.to_unix(DateTime.utc_now()) - 3600 * hours)
   end
 
   # a filter should always have kinds, since, and limit
   # validate values for all three, if all true, serialize
   defp validate_filter(%{kinds: k, since: _s, limit: l} = filter) do
     case [Enum.count(k) > 0, is_integer(l)]
-    |> Enum.all?(&(&1)) do
+         |> Enum.all?(& &1) do
       true -> Serializer.to_req(filter)
       false -> {:error, "Your filter must specify kinds, since and limit parameters."}
     end

@@ -61,20 +61,20 @@ defmodule Nostr.Relay.Socket.Sender do
     conn
   end
 
-  #@spec send_subscription_to_websocket(map(), atom(), String.t(), pid()) ::
+  # @spec send_subscription_to_websocket(map(), atom(), String.t(), pid()) ::
   #        {:ok, map()} | {:error, map(), any()}
-  #defp send_subscription_to_websocket(state, atom_subscription_id, json) do
+  # defp send_subscription_to_websocket(state, atom_subscription_id, json) do
   #  case send_frame(state, {:text, json}) do
   #    {:ok, state} ->
   #      {
   #        :ok,
   #        add_subscription(state, atom_subscription_id)
   #      }
-#
+  #
   #    {:error, state, message} ->
   #      {:error, state, message}
   #  end
-  #end
+  # end
 
   @spec send_frame(map(), any()) :: {:ok, map()} | {:error, map(), any()}
   defp send_frame(state, frame) do
