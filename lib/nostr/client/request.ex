@@ -128,8 +128,6 @@ defmodule Nostr.Client.Request do
     {atom_request_id, encoded_req}
   end
 
-  def new(_), do: {:error, "Filters must be created from a %NostrBasics.Filter{} struct."}
-
   def format_request(id, %Filter{} = filter) do
     case validate_filter(filter) do
       {:ok, _} -> Jason.encode!(["REQ", id, filter])
@@ -142,6 +140,10 @@ defmodule Nostr.Client.Request do
     Jason.encode!(["REQ", id, dec])
   end
 
+  @doc """
+  Take an Ecto struct and cast it to a NostrBasics.Filter struct.
+  Allows the user to create their own data structures while validating Filter.
+  """
   def cast_to_struct(filter) do
     params = filter |> Map.from_struct() |> Map.to_list()
     struct(%Filter{}, params)

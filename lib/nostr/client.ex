@@ -111,7 +111,7 @@ defmodule Nostr.Client do
   Subscribe to a single filter, via all active relay PIDs.
   """
   def subscribe_filter({_req_id, _filter} = req) do
-    relays = Nostr.Relay.RelayManager.active_pids()
+    relays = RelayManager.active_pids()
     subscribe_filter(req, relays)
   end
 
@@ -162,7 +162,7 @@ defmodule Nostr.Client do
   Each Relay GenServer maintains a state of its own subscriptions, and deletes them on unsubscribe.
   Useful to know which relay has which subscriptions.
   """
-  def get_subscriptions_all() do
+  def get_subscriptions_all do
     RelayManager.active_pids()
     |> Enum.map(&get_subscriptions(&1))
     |> List.flatten()
@@ -171,7 +171,7 @@ defmodule Nostr.Client do
   @doc """
   Subscribe to all messages.
   """
-  def subscribe_all(), do: subscribe_all(RelayManager.active_pids())
+  def subscribe_all, do: subscribe_all(RelayManager.active_pids())
 
   def subscribe_all(relays), do: subscribe_filter(Request.all(), relays)
 
@@ -195,7 +195,7 @@ defmodule Nostr.Client do
   @doc """
   Get an author's recommended servers
   """
-  def subscribe_recommended_servers(),
+  def subscribe_recommended_servers,
     do: subscribe_recommended_servers(RelayManager.active_pids())
 
   @spec subscribe_recommended_servers() :: List.t()
@@ -214,7 +214,7 @@ defmodule Nostr.Client do
   @doc """
   Get an author's contacts
   """
-  @spec subscribe_contacts(list(), PublicKey.id()) :: list()
+  @spec subscribe_contacts(list(), PublicKey.id()) :: {:ok, String.t()} | {:error, String.t()}
   def subscribe_contacts(relays, pubkey) do
     case PublicKey.to_binary(pubkey) do
       {:ok, binary_pubkey} ->
