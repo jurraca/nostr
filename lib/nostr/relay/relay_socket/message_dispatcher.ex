@@ -93,7 +93,7 @@ defmodule Nostr.Relay.Socket.MessageDispatcher do
   defp handle_responses(state, []), do: state
 
   defp handle_frames(
-         %{subscriptions: subscriptions, url: url, owner_pid: owner_pid} = state,
+         %{subscriptions: _subscriptions, url: url, owner_pid: owner_pid} = state,
          frames
        ) do
     Enum.reduce(frames, state, fn

@@ -5,7 +5,7 @@ defmodule Nostr.Relay.Socket.Sender do
 
   require Logger
 
-  alias Nostr.Client.{SendRequest}
+  alias Nostr.Client.Send
   alias Mint.{HTTP, WebSocket}
 
   @spec send_pong(map(), String.t()) :: {:ok, map()} | {:error, map(), any()}
@@ -39,12 +39,11 @@ defmodule Nostr.Relay.Socket.Sender do
 
   @spec send_close_message(map(), pid()) :: map()
   def send_close_message(state, subscription_id) do
-    json_request = SendRequest.close(subscription_id)
+    {:ok, json_request} = Send.close(subscription_id)
 
     case send_frame(state, {:text, json_request}) do
       {:ok, state} ->
-        state
-        |> remove_subscription(subscription_id)
+        remove_subscription(state, subscription_id)
 
       {:error, state, reason} ->
         Logger.error(reason)

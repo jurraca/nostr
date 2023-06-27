@@ -27,8 +27,6 @@ defmodule Nostr.Relay.Socket.FrameHandler do
     Registry.dispatch(Registry.PubSub, "notice", fn entries ->
       for {pid, _} <- entries, do: send(pid, message)
     end)
-
-    #    send(owner_pid, {:console, :notice, %{url: relay_url, message: message}})
   end
 
   defp handle_message(

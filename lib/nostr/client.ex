@@ -11,7 +11,7 @@ defmodule Nostr.Client do
   alias NostrBasics.Keys.{PublicKey, PrivateKey}
   alias NostrBasics.Models.{Profile, Note}
 
-  alias Nostr.Client.{Request, Send, EncryptedDM}
+  alias Nostr.Client.{Request, Send}
   alias Nostr.Relay.{RelayManager, Socket}
 
   @doc """
@@ -36,7 +36,7 @@ defmodule Nostr.Client do
   end
 
   @doc """
-  After creating a filter, Request.new/1 returns a subscription ID, which the client can use to subscribe to a topic.
+  After creating a filter, Request.new/1 returns a subscription ID, which the calling process can use to subscribe to a topic/subscription.
   """
   def subscribe_to_topic(pubsub, sub_id) do
     Registry.register(pubsub, sub_id, [])
@@ -291,7 +291,7 @@ defmodule Nostr.Client do
   @spec send_encrypted_direct_messages(PublicKey.id(), String.t(), PrivateKey.id(), List.t()) ::
           :ok | {:error, String.t()}
   def send_encrypted_direct_messages(remote_pubkey, message, private_key, relay_pids) do
-    EncryptedDM.send(message, remote_pubkey, private_key, relay_pids)
+    Send.encrypted_dm(message, remote_pubkey, private_key, relay_pids)
   end
 
   @doc """
