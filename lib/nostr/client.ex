@@ -6,7 +6,6 @@ defmodule Nostr.Client do
 
   require Logger
 
-  alias Nostr.Client.EncryptedDM
   alias NostrBasics.Event
   alias NostrBasics.Keys.{PublicKey, PrivateKey}
   alias NostrBasics.Models.{Profile, Note}
