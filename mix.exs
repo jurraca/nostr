@@ -48,7 +48,8 @@ defmodule Nostr.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger]
+      extra_applications: [:logger],
+      mod: {Nostr.Application, []}
     ]
   end
 
@@ -60,7 +61,7 @@ defmodule Nostr.MixProject do
       {:credo, "~> 1.6", only: [:dev, :test], runtime: false},
       {:hammox, "~> 0.7", only: :test},
       {:mint_web_socket, "~> 1.0"},
-      {:nostr_basics, "~> 0.1.2"}
+      {:nostr_basics, path: "../nostr_basics"}
     ]
   end
 end

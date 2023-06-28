@@ -1,11 +1,11 @@
-defmodule Nostr.Client.Relays.RelaySocket.Sender do
+defmodule Nostr.Relay.Socket.Sender do
   @moduledoc """
   Responsible for sending frames through the websocket connection
   """
 
   require Logger
 
-  alias Nostr.Client.{SendRequest}
+  alias Nostr.Client.Send
   alias Mint.{HTTP, WebSocket}
 
   @spec send_pong(map(), String.t()) :: {:ok, map()} | {:error, map(), any()}
@@ -25,11 +25,11 @@ defmodule Nostr.Client.Relays.RelaySocket.Sender do
     end
   end
 
-  @spec send_subscription_request(map(), atom(), String.t(), pid()) :: map()
-  def send_subscription_request(state, atom_subscription_id, json, subscriber) do
-    case send_subscription_to_websocket(state, atom_subscription_id, json, subscriber) do
+  @spec send_subscription_request(map(), atom(), String.t()) :: map()
+  def send_subscription_request(state, sub_id, json) do
+    case send_frame(state, {:text, json}) do
       {:ok, state} ->
-        state
+        add_subscription(state, sub_id)
 
       {:error, state, reason} ->
         Logger.error(reason)
@@ -39,12 +39,11 @@ defmodule Nostr.Client.Relays.RelaySocket.Sender do
 
   @spec send_close_message(map(), pid()) :: map()
   def send_close_message(state, subscription_id) do
-    json_request = SendRequest.close(subscription_id)
+    {:ok, json_request} = Send.close(subscription_id)
 
     case send_frame(state, {:text, json_request}) do
       {:ok, state} ->
-        state
-        |> remove_subscription(subscription_id)
+        remove_subscription(state, subscription_id)
 
       {:error, state, reason} ->
         Logger.error(reason)
@@ -61,21 +60,20 @@ defmodule Nostr.Client.Relays.RelaySocket.Sender do
     conn
   end
 
-  @spec send_subscription_to_websocket(map(), atom(), String.t(), pid()) ::
-          {:ok, map()} | {:error, map(), any()}
-  defp send_subscription_to_websocket(state, atom_subscription_id, json, subscriber) do
-    case send_frame(state, {:text, json}) do
-      {:ok, state} ->
-        {
-          :ok,
-          state
-          |> add_subscription(atom_subscription_id, subscriber)
-        }
-
-      {:error, state, message} ->
-        {:error, state, message}
-    end
-  end
+  # @spec send_subscription_to_websocket(map(), atom(), String.t(), pid()) ::
+  #        {:ok, map()} | {:error, map(), any()}
+  # defp send_subscription_to_websocket(state, atom_subscription_id, json) do
+  #  case send_frame(state, {:text, json}) do
+  #    {:ok, state} ->
+  #      {
+  #        :ok,
+  #        add_subscription(state, atom_subscription_id)
+  #      }
+  #
+  #    {:error, state, message} ->
+  #      {:error, state, message}
+  #  end
+  # end
 
   @spec send_frame(map(), any()) :: {:ok, map()} | {:error, map(), any()}
   defp send_frame(state, frame) do
@@ -92,12 +90,13 @@ defmodule Nostr.Client.Relays.RelaySocket.Sender do
     end
   end
 
-  defp add_subscription(state, atom_subscription_id, subscriber) do
-    %{state | subscriptions: [{atom_subscription_id, subscriber}] ++ state.subscriptions}
+  defp add_subscription(state, atom_subscription_id) do
+    Logger.info("Adding subscription to state")
+    %{state | subscriptions: [atom_subscription_id] ++ state.subscriptions}
   end
 
   defp remove_subscription(%{subscriptions: subscriptions} = state, atom_subscription_id) do
-    new_subscriptions = subscriptions |> Keyword.delete(atom_subscription_id)
+    new_subscriptions = subscriptions |> List.delete(atom_subscription_id)
 
     %{state | subscriptions: new_subscriptions}
   end

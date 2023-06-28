@@ -1,4 +1,4 @@
-defmodule Nostr.Client.Relays.RelaySocket.MessageDispatcher do
+defmodule Nostr.Relay.Socket.MessageDispatcher do
   @moduledoc """
   Sends websocket messages to the right destination
   """
@@ -6,13 +6,18 @@ defmodule Nostr.Client.Relays.RelaySocket.MessageDispatcher do
   require Logger
 
   alias Mint.{WebSocket}
-  alias Nostr.Client.Relays.RelaySocket.{FrameHandler, Publisher, Sender}
+  alias Nostr.Relay.Socket.{FrameHandler, Publisher, Sender}
 
   def dispatch(message, %{conn: conn, url: url, owner_pid: owner_pid} = state) do
     case WebSocket.stream(conn, message) do
       {:ok, conn, responses} ->
         state = put_in(state.conn, conn) |> handle_responses(responses)
-        if state.closing?, do: do_close(state), else: {:noreply, state}
+
+        if state.closing? do
+          do_close(state)
+        else
+          {:noreply, state}
+        end
 
       {:error, _conn, %Mint.TransportError{} = error, _responses} ->
         Publisher.transport_error(owner_pid, url, error.reason)
@@ -88,7 +93,7 @@ defmodule Nostr.Client.Relays.RelaySocket.MessageDispatcher do
   defp handle_responses(state, []), do: state
 
   defp handle_frames(
-         %{subscriptions: subscriptions, url: url, owner_pid: owner_pid} = state,
+         %{subscriptions: _subscriptions, url: url, owner_pid: owner_pid} = state,
          frames
        ) do
     Enum.reduce(frames, state, fn
@@ -104,7 +109,7 @@ defmodule Nostr.Client.Relays.RelaySocket.MessageDispatcher do
         %{state | closing?: true}
 
       {:text, text}, state ->
-        FrameHandler.handle_text_frame(text, subscriptions, url, owner_pid)
+        FrameHandler.handle_text_frame(text, url, owner_pid)
         state
 
       frame, state ->
