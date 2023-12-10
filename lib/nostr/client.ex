@@ -17,8 +17,8 @@ defmodule Nostr.Client do
   Load relays and filters.
   We don't allow sub'ing to a relay without filters. Default to "all" if needed.
   """
-  def load_configuration(%{relays: _, filters: []}) do
-    {:error, "No filters provided. Please create a filter before connecting to relays."}
+  def load_configuration(%{relays: [], filters: _}) do
+    {:error, "No relays provided. Please add a relay so the client can send and/or receive stuff."}
   end
 
   def load_configuration(%{relays: relays, filters: filters}) do
