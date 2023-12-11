@@ -14,11 +14,16 @@ defmodule Nostr.Client do
   alias Nostr.Relay.{RelayManager, Socket}
 
   @doc """
-  Load relays and filters.
-  We don't allow sub'ing to a relay without filters. Default to "all" if needed.
+  Load relays and/or filters.
+  These are taken from app configuration. Filters can be omitted on startup,
+  but if you set `connect_on_startup: true` in `config.exs`, you must pass relays to connect to.
   """
   def load_configuration(%{relays: [], filters: _}) do
     {:error, "No relays provided. Please add a relay so the client can send and/or receive stuff."}
+  end
+
+  def load_configuration(%{relays: relays, filter: []}) do
+    add_relays(relays)
   end
 
   def load_configuration(%{relays: relays, filters: filters}) do
@@ -32,13 +37,6 @@ defmodule Nostr.Client do
       {:error, _} = err ->
         err
     end
-  end
-
-  @doc """
-  After creating a filter, Request.new/1 returns a subscription ID, which the calling process can use to subscribe to a topic/subscription.
-  """
-  def subscribe_to_topic(pubsub, sub_id) do
-    Registry.register(pubsub, sub_id, [])
   end
 
   @doc """
@@ -70,6 +68,13 @@ defmodule Nostr.Client do
         false
     end)
     |> Enum.filter(& &1)
+  end
+
+  @doc """
+  After creating a filter, Request.new/1 returns a subscription ID, which the calling process can use to subscribe to a topic/subscription.
+  """
+  def subscribe_to_topic(pubsub, sub_id) do
+    Registry.register(pubsub, sub_id, [])
   end
 
   @doc """
@@ -118,10 +123,6 @@ defmodule Nostr.Client do
   Subscribe to a filter via a specific set of relays.
   Returns {:ok, sub_id} if successful.
   """
-  def subscribe_filter({_req_id, filter}, []) when is_binary(filter) do
-    {:error, "Relays list is empty: no relays to subscribe to."}
-  end
-
   def subscribe_filter({req_id, filter}, relays) when is_binary(filter) do
     Logger.info("Subscribing to #{Enum.count(relays)} relays for filter #{filter}")
 
@@ -129,7 +130,7 @@ defmodule Nostr.Client do
       true ->
         {:ok, req_id}
 
-      false ->
+      false -> # TODO: return which were successful and which were not
         {:error, "Not all subscriptions were successful for req_id#{Atom.to_string(req_id)}"}
     end
   end
@@ -143,9 +144,7 @@ defmodule Nostr.Client do
       {:ok, Request.new(filter)}
     rescue
       _ -> {:error, "Creating Request for filter id #{filter.id} failed."}
-    catch
-      {req_id, encoded_filter} -> subscribe_filter({req_id, encoded_filter})
-    end
+     end
   end
 
   @doc """
@@ -256,41 +255,6 @@ defmodule Nostr.Client do
     else
       {:error, message} -> {:error, message}
     end
-  end
-
-  #  @doc """
-  #  Get encrypted direct messages from a private key
-  #  """
-  #  def encrypted_direct_messages(private_key) do
-  #    @spec encrypted_direct_messages(PrivateKey.id()) :: DynamicSupervisor.on_start_child()
-  #    case PrivateKey.to_binary(private_key) do
-  #      {:ok, binary_private_key} ->
-  #        DynamicSupervisor.start_child(
-  #          Nostr.Subscriptions,
-  #          {EncryptedDirectMessagesSubscription,
-  #           [RelayManager.active_pids(), binary_private_key, self()]}
-  #        )
-  #
-  #      {:error, message} ->
-  #        {:error, message}
-  #    end
-  #  end
-
-  @doc """
-  Sends an encrypted direct message
-  """
-  @spec send_encrypted_direct_messages(PublicKey.id(), String.t(), PrivateKey.id()) ::
-          :ok | {:error, String.t()}
-  def send_encrypted_direct_messages(remote_pubkey, message, private_key) do
-    relay_pids = RelayManager.active_pids()
-
-    send_encrypted_direct_messages(message, remote_pubkey, private_key, relay_pids)
-  end
-
-  @spec send_encrypted_direct_messages(PublicKey.id(), String.t(), PrivateKey.id(), List.t()) ::
-          :ok | {:error, String.t()}
-  def send_encrypted_direct_messages(remote_pubkey, message, private_key, relay_pids) do
-    Send.encrypted_dm(message, remote_pubkey, private_key, relay_pids)
   end
 
   @doc """

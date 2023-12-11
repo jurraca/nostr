@@ -33,7 +33,7 @@ defmodule Nostr.Relay.Socket.Server do
 
   @impl true
   def handle_cast({:send_event, event}, state) do
-    state = Sender.send_text(state, Jason.encode!(event))
+    state = Sender.send_text(state, event)
 
     {:noreply, state}
   end

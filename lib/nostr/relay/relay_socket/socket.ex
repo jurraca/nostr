@@ -73,7 +73,7 @@ defmodule Nostr.Relay.Socket do
   end
 
   def send_event(pid, event) do
-    GenServer.cast(pid, {:send_event, event})
+    GenServer.cast(pid, {:send_event, Jason.encode!(event)})
   end
 
   # @spec subscribe_all(pid(), pid(), integer()) :: atom()
