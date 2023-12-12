@@ -127,35 +127,6 @@ defmodule Nostr.Client.Send do
     end
   end
 
-  @doc """
-  Encrypt and send a direct message
-
-  ## Examples
-      iex> remote_pubkey = <<0xefc83f01c8fb309df2c8866b8c7924cc8b6f0580afdde1d6e16e2b6107c2862c::256>>
-      ...> private_key = <<0x4E22DA43418DD934373CBB38A5AB13059191A2B3A51C5E0B67EB1334656943B8::256>>
-      ...> relay_pids = []
-      ...> "The Times 03/Jan/2009 Chancellor on brink of second bailout for banks"
-      ...> |> encrypted_dm(remote_pubkey, private_key, relay_pids)
-      :ok
-  """
-  @spec encrypted_dm(String.t(), PublicKey.id(), PrivateKey.id(), list()) ::
-          :ok | {:error, String.t()}
-  def encrypted_dm(contents, remote_pubkey, private_key, relay_pids) do
-    with {:ok, dm_event} <- create_dm_event(contents, remote_pubkey, private_key),
-         {:ok, signed_event} <- prepare_and_sign_event(dm_event, private_key) do
-      validate_and_send(signed_event, relay_pids)
-    else
-      {:error, message} -> {:error, message}
-    end
-  end
-
-  defp create_dm_event(contents, remote_pubkey, private_key) do
-    EncryptedDirectMessage.to_event(
-      %EncryptedDirectMessage{content: contents, remote_pubkey: remote_pubkey},
-      private_key
-    )
-  end
-
   defp validate_and_send(signed_event, relay_pids) do
     case Validator.validate_event(signed_event) do
       :ok -> send_event(signed_event, relay_pids)

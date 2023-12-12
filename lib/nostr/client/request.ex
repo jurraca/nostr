@@ -63,10 +63,6 @@ defmodule Nostr.Client.Request do
     get_by_authors(pubkeys, [@reaction_kind], limit)
   end
 
-  def encrypted_direct_messages(<<_::256>> = pubkey, limit \\ 10) do
-    get_by_kind(@encrypted_direct_message_kind, [pubkey], limit)
-  end
-
   defp get_by_authors(pubkeys, kinds, limit) do
     pubkeys
     |> filter_by_authors(kinds, limit)
