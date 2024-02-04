@@ -1,21 +1,22 @@
 defmodule Nostr.MixProject do
   use Mix.Project
 
-  @version "0.2.0"
+  @version "0.1.0"
+  @source_url "https://git.sr.ht/jurraca/nostr"
 
   def project do
     [
       app: :nostr,
       version: @version,
-      description: "Connect to the nostr network with Elixir",
+      description: "An Elixir client for Nostr",
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
 
       # Docs
       name: "Nostr",
-      source_url: "https://github.com/RooSoft/nostr",
-      homepage_url: "https://github.com/RooSoft/nostr",
+      source_url: @source_url,
+      homepage_url: @source_url,
       package: package(),
       docs: docs()
     ]
@@ -23,25 +24,18 @@ defmodule Nostr.MixProject do
 
   def package do
     [
-      maintainers: ["Marc Lacoursière"],
-      licenses: ["UNLICENCE"],
-      links: %{"GitHub" => "https://github.com/RooSoft/nostr"}
+      maintainers: ["jurraca"],
+      licenses: ["MIT"]
     ]
   end
 
   defp docs do
     [
       main: "readme",
-      extras: docs_extras(),
+      extras: [ "README.md" ],
       assets: "/guides/assets",
       source_ref: @version,
-      source_url: "https://github.com/RooSoft/nostr"
-    ]
-  end
-
-  def docs_extras do
-    [
-      "README.md"
+      source_url: @source_url
     ]
   end
 
@@ -57,11 +51,10 @@ defmodule Nostr.MixProject do
   defp deps do
     [
       {:ex_doc, "~> 0.29.1", only: [:dev], runtime: false},
-      {:dialyxir, "~> 1.2", only: [:dev], runtime: false},
       {:credo, "~> 1.6", only: [:dev, :test], runtime: false},
       {:hammox, "~> 0.7", only: :test},
       {:mint_web_socket, "~> 1.0"},
-      {:nostr_basics, "~> 0.1.6"}
+      {:nostrlib, git: "https://git.sr.ht/~jurraca/nostrlib"}
     ]
   end
 end
