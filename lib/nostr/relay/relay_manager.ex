@@ -25,7 +25,8 @@ defmodule Nostr.Relay.RelayManager do
   end
 
   def active_pids() do
-    DynamicSupervisor.which_children(RelayManager)
+    RelayManager
+    |> DynamicSupervisor.which_children()
     |> Enum.map(&get_pid/1)
     |> Enum.filter(&relay_socket_ready?/1)
   end
@@ -43,7 +44,5 @@ defmodule Nostr.Relay.RelayManager do
 
   defp get_pid({:undefined, pid, :worker, [Socket]}), do: pid
 
-  defp relay_socket_ready?(pid) do
-    Socket.ready?(pid)
-  end
+  defp relay_socket_ready?(pid), do: Socket.ready?(pid)
 end

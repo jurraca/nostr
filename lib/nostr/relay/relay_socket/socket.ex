@@ -72,12 +72,10 @@ defmodule Nostr.Relay.Socket do
     GenServer.cast(pid, {:unsubscribe, subscription_id})
   end
 
+  @doc """
+  Send a message
+  """
   def send_event(pid, event) do
-    GenServer.cast(pid, {:send_event, Jason.encode!(event)})
-  end
-
-  # @spec subscribe_all(pid(), pid(), integer()) :: atom()
-  def subscribe_all(caller, relay_pid, limit \\ 10) do
-    GenServer.call(relay_pid, {:all, limit, caller})
+    GenServer.cast(pid, {:send_event, event})
   end
 end

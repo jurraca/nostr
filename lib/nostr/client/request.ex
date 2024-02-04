@@ -5,8 +5,7 @@ defmodule Nostr.Client.Request do
   Request creation will either be correct or return an error.
   """
 
-  alias NostrBasics.Filter
-  alias NostrBasics.Filter.Serializer
+  alias Nostrlib.{Filter, Utils}
 
   @default_id_size 16
   # hours back for messages
@@ -25,8 +24,8 @@ defmodule Nostr.Client.Request do
     get_by_authors([pubkey], [@metadata_kind], nil)
   end
 
-  def recommended_servers() do
-    get_by_authors([], [@recommended_servers_kind], nil)
+  def recommended_servers(pubkey) do
+    get_by_authors([pubkey], [@recommended_servers_kind], nil)
   end
 
   def contacts(pubkey, limit \\ 100) do
@@ -37,7 +36,7 @@ defmodule Nostr.Client.Request do
     get_by_ids([id], @text_kind)
   end
 
-  # fix and use NostrBasics.to_query/1
+  # fix and use Nostrlib.to_query/1
   def all(limit \\ 10) do
     # got to specify kinds, or else, some relays won't return anything
     new(%Filter{kinds: [1, 5, 6, 7, 9735], since: since(@default_since), limit: limit})
@@ -137,7 +136,7 @@ defmodule Nostr.Client.Request do
   end
 
   @doc """
-  Take an Ecto struct and cast it to a NostrBasics.Filter struct.
+  Take an Ecto struct and cast it to a Nostrlib.Filter struct.
   Allows the user to create their own data structures while validating Filter.
   """
   def cast_to_struct(filter) do
@@ -147,7 +146,7 @@ defmodule Nostr.Client.Request do
 
   @spec generate_random_id(integer()) :: binary()
   defp generate_random_id(size \\ @default_id_size) do
-    :crypto.strong_rand_bytes(size) |> Binary.to_hex()
+    :crypto.strong_rand_bytes(size) |> Utils.to_hex()
   end
 
   defp since(hours) when is_integer(hours) do
@@ -157,10 +156,12 @@ defmodule Nostr.Client.Request do
   # a filter should always have kinds, since, and limit
   # validate values for all three, if all true, serialize
   defp validate_filter(%{kinds: k, since: _s, limit: l} = filter) do
-    case [Enum.count(k) > 0, is_integer(l)]
-         |> Enum.all?(& &1) do
-      true -> Serializer.to_req(filter)
-      false -> {:error, "Your filter must specify kinds, since and limit parameters."}
+    with true <- Enum.count(k) > 0,
+         true <- is_integer(l) do
+      {:ok, filter}
+    else
+      {:error, reason} -> {:error, reason}
+      _ -> {:error, "Your filter must specify kinds, since and limit parameters."}
     end
   end
 
@@ -170,6 +171,6 @@ defmodule Nostr.Client.Request do
   end
 
   defp hexify(keys) when is_list(keys) do
-    Enum.map(keys, &Binary.to_hex(&1))
+    Enum.map(keys, &Utils.to_hex(&1))
   end
 end

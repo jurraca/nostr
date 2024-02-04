@@ -1,4 +1,4 @@
-defmodule Nostr.Relay.Socket.MessageDispatcher do
+defmodule Nostr.Relay.Socket.Response do
   @moduledoc """
   Sends websocket messages to the right destination
   """
@@ -18,7 +18,7 @@ defmodule Nostr.Relay.Socket.MessageDispatcher do
         else
           {:noreply, state}
         end
-
+ 
       {:error, _conn, %Mint.TransportError{} = error, _responses} ->
         Publisher.transport_error(owner_pid, url, error.reason)
         {:stop, {:shutdown, "#{url} has closed the connection"}, state}
